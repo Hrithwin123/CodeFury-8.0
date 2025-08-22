@@ -97,6 +97,7 @@ const FarmSwipeLanding = () => {
                 <a href="#features" className="block py-2 text-gray-700 font-medium">Features</a>
                 <a href="#how-it-works" className="block py-2 text-gray-700 font-medium">How It Works</a>
                 <a href="#testimonials" className="block py-2 text-gray-700 font-medium">Reviews</a>
+                <a href="/auth" className="block py-2 text-gray-700 font-medium">Sign In</a>
                 <button className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-3 rounded-full font-semibold mt-2">
                   Get Started
                 </button>
@@ -154,10 +155,10 @@ const FarmSwipeLanding = () => {
 
           {/* Mobile CTA Buttons */}
           <div className="space-y-3">
-            <button className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-4 rounded-full text-lg font-semibold flex items-center justify-center shadow-lg">
+            <a href="/auth" className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-4 rounded-full text-lg font-semibold flex items-center justify-center shadow-lg">
               <Download className="mr-2 w-5 h-5" />
-              Download App
-            </button>
+              Get Started
+            </a>
             <button className="w-full border-2 border-teal-600 text-teal-600 py-4 rounded-full text-lg font-semibold flex items-center justify-center">
               <Play className="mr-2 w-5 h-5" />
               Watch Demo
@@ -331,14 +332,15 @@ const FarmSwipeLanding = () => {
             </div>
             
             {/* Desktop Menu */}
-            <div className="hidden md:flex items-center space-x-8">
-              <a href="#features" className="text-gray-700 hover:text-teal-600 transition-colors">Features</a>
-              <a href="#how-it-works" className="text-gray-700 hover:text-teal-600 transition-colors">How It Works</a>
-              <a href="#testimonials" className="text-gray-700 hover:text-teal-600 transition-colors">Reviews</a>
-              <button className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-6 py-2 rounded-full hover:shadow-lg transform hover:scale-105 transition-all duration-200">
-                Get Started
-              </button>
-            </div>
+                          <div className="hidden md:flex items-center space-x-8">
+                <a href="#features" className="text-gray-700 hover:text-teal-600 transition-colors">Features</a>
+                <a href="#how-it-works" className="text-gray-700 hover:text-teal-600 transition-colors">How It Works</a>
+                <a href="#testimonials" className="text-gray-700 hover:text-teal-600 transition-colors">Reviews</a>
+                <a href="/auth" className="text-gray-700 hover:text-teal-600 transition-colors">Sign In</a>
+                <button className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-6 py-2 rounded-full hover:shadow-lg transform hover:scale-105 transition-all duration-200">
+                  Get Started
+                </button>
+              </div>
 
             {/* Mobile Menu Button */}
             <button 
@@ -380,10 +382,10 @@ const FarmSwipeLanding = () => {
                 Connect directly with local farmers, negotiate fair prices, and get the freshest produce delivered to your door. No middlemen, just genuine farm-to-table connections.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-8 py-4 rounded-full text-lg font-semibold hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center">
+                <a href="/auth" className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-8 py-4 rounded-full text-lg font-semibold hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center">
                   Start Swiping
                   <ChevronRight className="ml-2 w-5 h-5" />
-                </button>
+                </a>
                 <button className="border-2 border-teal-600 text-teal-600 px-8 py-4 rounded-full text-lg font-semibold hover:bg-teal-50 transition-colors">
                   Watch Demo
                 </button>
