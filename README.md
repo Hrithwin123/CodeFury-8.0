@@ -1,1 +1,1 @@
-# ADD Readme laterrr
+A "Tinder-like" interface for farmers—where consumers can swipe right to directly connect and negotiate with farmers for fresh produce
