@@ -1,34 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Users, Smartphone, MessageCircle, MapPin, Star, ChevronRight, Menu, X } from 'lucide-react';
+import { Heart, Users, Smartphone, MessageCircle, MapPin, Star, ChevronRight, Menu, X, Download, Play } from 'lucide-react';
 
 const FarmSwipeLanding = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     setIsVisible(true);
+    
+    // Detect mobile device
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const mobileKeywords = ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry', 'windows phone'];
+      const isMobileDevice = mobileKeywords.some(keyword => userAgent.includes(keyword)) || window.innerWidth <= 768;
+      setIsMobile(isMobileDevice);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const features = [
     {
-      icon: <Heart className="w-8 h-8" />,
+      icon: <Heart className="w-6 h-6" />,
       title: "Swipe to Connect",
-      description: "Discover fresh produce with a simple swipe. Right for interested, left to skip."
+      description: "Discover fresh produce with a simple swipe"
     },
     {
-      icon: <MessageCircle className="w-8 h-8" />,
+      icon: <MessageCircle className="w-6 h-6" />,
       title: "Direct Chat",
-      description: "Negotiate prices and discuss details directly with farmers. No middlemen."
+      description: "Negotiate prices directly with farmers"
     },
     {
-      icon: <MapPin className="w-8 h-8" />,
+      icon: <MapPin className="w-6 h-6" />,
       title: "Local Discovery",
-      description: "Find farmers near you with geo-tagged listings and real-time availability."
+      description: "Find farmers near you instantly"
     },
     {
-      icon: <Star className="w-8 h-8" />,
+      icon: <Star className="w-6 h-6" />,
       title: "Quality Assured",
-      description: "Verified farmers with ratings, reviews, and quality badges for trust."
+      description: "Verified farmers with ratings"
     }
   ];
 
@@ -36,23 +49,274 @@ const FarmSwipeLanding = () => {
     {
       name: "Rajesh Kumar",
       role: "Organic Farmer",
-      content: "Finally, I can sell directly to customers without losing profit to middlemen. FarmSwipe changed my business!",
+      content: "Finally, I can sell directly to customers without losing profit to middlemen!",
       rating: 5
     },
     {
       name: "Priya Sharma",
       role: "Home Chef",
-      content: "Fresh vegetables delivered from local farms. The quality is amazing and prices are fair for everyone.",
+      content: "Fresh vegetables from local farms. Amazing quality and fair prices.",
       rating: 5
     },
     {
       name: "Ankit Patel",
       role: "Restaurant Owner",
-      content: "Bulk ordering made simple. I can now source ingredients directly from trusted farmers nearby.",
+      content: "Bulk ordering made simple. Direct sourcing from trusted farmers.",
       rating: 5
     }
   ];
 
+  // Mobile-optimized component
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cyan-50 to-teal-50">
+        {/* Mobile Navigation */}
+        <nav className="bg-white/95 backdrop-blur-md border-b border-teal-100 sticky top-0 z-50">
+          <div className="px-4">
+            <div className="flex justify-between items-center h-14">
+              <div className="flex items-center space-x-2">
+                <div className="w-7 h-7 bg-gradient-to-br from-teal-600 to-cyan-400 rounded-lg flex items-center justify-center">
+                  <Heart className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-lg font-bold text-gray-800">FarmSwipe</span>
+              </div>
+              
+              <button 
+                className="p-2"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+              >
+                {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Menu */}
+          {isMenuOpen && (
+            <div className="bg-white border-t border-gray-200 px-4 py-3">
+              <div className="space-y-3">
+                <a href="#features" className="block py-2 text-gray-700 font-medium">Features</a>
+                <a href="#how-it-works" className="block py-2 text-gray-700 font-medium">How It Works</a>
+                <a href="#testimonials" className="block py-2 text-gray-700 font-medium">Reviews</a>
+                <button className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-3 rounded-full font-semibold mt-2">
+                  Get Started
+                </button>
+              </div>
+            </div>
+          )}
+        </nav>
+
+        {/* Mobile Hero Section */}
+        <section className="px-4 py-12">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-800 mb-4 leading-tight">
+              Swipe Right for
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-400">
+                Fresh Produce
+              </span>
+            </h1>
+            <p className="text-lg text-gray-600 mb-6">
+              Connect directly with local farmers and get the freshest produce delivered to your door.
+            </p>
+          </div>
+          
+          {/* Mobile Phone Mockup */}
+          <div className="max-w-xs mx-auto mb-8">
+            <div className="bg-white rounded-3xl shadow-2xl p-4">
+              <div className="bg-gradient-to-br from-teal-500 to-cyan-400 rounded-2xl p-4 text-white">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm opacity-80">Fresh Organic Tomatoes</span>
+                  <Heart className="w-5 h-5" />
+                </div>
+                <div className="w-full h-24 bg-white/20 rounded-xl mb-3 overflow-hidden">
+                  <img 
+                    src="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&h=200&fit=crop&crop=center" 
+                    alt="Fresh tomatoes" 
+                    className="w-full h-full object-cover rounded-xl"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-semibold">₹40/kg</p>
+                    <p className="text-xs opacity-80">Ramesh Farm</p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
+                      <Heart className="w-4 h-4 fill-current" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile CTA Buttons */}
+          <div className="space-y-3">
+            <button className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-4 rounded-full text-lg font-semibold flex items-center justify-center shadow-lg">
+              <Download className="mr-2 w-5 h-5" />
+              Download App
+            </button>
+            <button className="w-full border-2 border-teal-600 text-teal-600 py-4 rounded-full text-lg font-semibold flex items-center justify-center">
+              <Play className="mr-2 w-5 h-5" />
+              Watch Demo
+            </button>
+          </div>
+        </section>
+
+        {/* Mobile Features Section */}
+        <section id="features" className="py-12 bg-white">
+          <div className="px-4">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-800 mb-3">
+                Why Choose <span className="text-teal-600">FarmSwipe</span>?
+              </h2>
+              <p className="text-gray-600">Features designed for you</p>
+            </div>
+            
+            <div className="space-y-4">
+              {features.map((feature, index) => (
+                <div 
+                  key={index}
+                  className="bg-gradient-to-br from-cyan-50 to-teal-50 p-4 rounded-xl flex items-start space-x-4"
+                >
+                  <div className="w-12 h-12 bg-gradient-to-br from-teal-600 to-cyan-400 rounded-full flex items-center justify-center text-white flex-shrink-0">
+                    {feature.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-800 mb-1">{feature.title}</h3>
+                    <p className="text-gray-600 text-sm">{feature.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Mobile How It Works Section */}
+        <section id="how-it-works" className="py-12 bg-gradient-to-br from-cyan-50 to-teal-50">
+          <div className="px-4">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-800 mb-3">
+                How It <span className="text-teal-600">Works</span>
+              </h2>
+              <p className="text-gray-600">Simple steps to fresh produce</p>
+            </div>
+            
+            <div className="space-y-6">
+              {[
+                { step: "01", title: "Discover", desc: "Browse local farmers and fresh produce" },
+                { step: "02", title: "Swipe", desc: "Swipe right on products you love" },
+                { step: "03", title: "Connect", desc: "Chat with farmers and arrange delivery" }
+              ].map((item, index) => (
+                <div key={index} className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-teal-600 to-cyan-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                    {item.step}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-800 text-lg">{item.title}</h3>
+                    <p className="text-gray-600">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Mobile Testimonials Section */}
+        <section id="testimonials" className="py-12 bg-white">
+          <div className="px-4">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-gray-800 mb-3">
+                What Our <span className="text-teal-600">Community</span> Says
+              </h2>
+            </div>
+            
+            <div className="space-y-4">
+              {testimonials.map((testimonial, index) => (
+                <div 
+                  key={index}
+                  className="bg-gradient-to-br from-cyan-50 to-teal-50 p-4 rounded-xl"
+                >
+                  <div className="flex items-center mb-2">
+                    {[...Array(testimonial.rating)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-gray-600 mb-3 text-sm italic">"{testimonial.content}"</p>
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm">{testimonial.name}</p>
+                    <p className="text-teal-600 text-sm">{testimonial.role}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Mobile CTA Section */}
+        <section className="py-12 bg-gradient-to-r from-teal-600 to-cyan-400">
+          <div className="px-4 text-center">
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Ready to Transform Agriculture?
+            </h2>
+            <p className="text-white/90 mb-6">
+              Join thousands building a sustainable food ecosystem
+            </p>
+            <div className="space-y-3">
+              <button className="w-full bg-white text-teal-600 py-4 rounded-full text-lg font-semibold">
+                Download App
+              </button>
+              <button className="w-full border-2 border-white text-white py-4 rounded-full text-lg font-semibold">
+                Learn More
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Mobile Footer */}
+        <footer className="bg-gray-800 text-white py-8">
+          <div className="px-4">
+            <div className="text-center mb-6">
+              <div className="flex items-center justify-center space-x-2 mb-3">
+                <div className="w-6 h-6 bg-gradient-to-br from-teal-600 to-cyan-400 rounded-lg flex items-center justify-center">
+                  <Heart className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-lg font-bold">FarmSwipe</span>
+              </div>
+              <p className="text-gray-400 text-sm">Connecting farmers and consumers for a sustainable future.</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6 text-sm">
+              <div>
+                <h3 className="font-semibold mb-2">Product</h3>
+                <ul className="space-y-1 text-gray-400">
+                  <li><a href="#">Features</a></li>
+                  <li><a href="#">How It Works</a></li>
+                  <li><a href="#">Pricing</a></li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Support</h3>
+                <ul className="space-y-1 text-gray-400">
+                  <li><a href="#">Help Center</a></li>
+                  <li><a href="#">Contact Us</a></li>
+                  <li><a href="#">Privacy Policy</a></li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="border-t border-gray-700 mt-6 pt-4 text-center text-gray-400 text-xs">
+              <p>&copy; 2025 FarmSwipe. All rights reserved.</p>
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // Desktop version
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 to-teal-50">
       {/* Navigation */}
@@ -198,7 +462,8 @@ const FarmSwipeLanding = () => {
             {features.map((feature, index) => (
               <div 
                 key={index}
-                className={`bg-gradient-to-br from-cyan-50 to-teal-50 p-6 rounded-2xl hover:shadow-lg transform hover:scale-105 transition-all duration-300 delay-${index * 100}`}
+                className="bg-gradient-to-br from-cyan-50 to-teal-50 p-6 rounded-2xl hover:shadow-lg transform hover:scale-105 transition-all duration-300"
+                style={{ animationDelay: `${index * 100}ms` }}
               >
                 <div className="w-16 h-16 bg-gradient-to-br from-teal-600 to-cyan-400 rounded-full flex items-center justify-center mb-4 text-white">
                   {feature.icon}
