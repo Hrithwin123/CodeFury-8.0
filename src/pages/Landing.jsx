@@ -155,10 +155,10 @@ const FarmSwipeLanding = () => {
 
           {/* Mobile CTA Buttons */}
           <div className="space-y-3">
-            <a href="/auth" className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-4 rounded-full text-lg font-semibold flex items-center justify-center shadow-lg">
-              <Download className="mr-2 w-5 h-5" />
-              Get Started
-            </a>
+                         <a href="/swipe" className="w-full bg-gradient-to-r from-teal-600 to-cyan-400 text-white py-4 rounded-full text-lg font-semibold flex items-center justify-center shadow-lg">
+               <Download className="mr-2 w-5 h-5" />
+               Get Started
+             </a>
             <button className="w-full border-2 border-teal-600 text-teal-600 py-4 rounded-full text-lg font-semibold flex items-center justify-center">
               <Play className="mr-2 w-5 h-5" />
               Watch Demo
@@ -382,7 +382,7 @@ const FarmSwipeLanding = () => {
                 Connect directly with local farmers, negotiate fair prices, and get the freshest produce delivered to your door. No middlemen, just genuine farm-to-table connections.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <a href="/auth" className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-8 py-4 rounded-full text-lg font-semibold hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center">
+                <a href="/swipe" className="bg-gradient-to-r from-teal-600 to-cyan-400 text-white px-8 py-4 rounded-full text-lg font-semibold hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center">
                   Start Swiping
                   <ChevronRight className="ml-2 w-5 h-5" />
                 </a>
