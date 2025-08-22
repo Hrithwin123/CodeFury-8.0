@@ -39,7 +39,14 @@ const Auth = () => {
         } else if (data.session) {
           setMessage('Account created successfully!');
           setMessageType('success');
-          // Redirect or update UI state here
+          
+          // Get user role and redirect accordingly
+          const role = data.user.user_metadata?.user_role || 'consumer';
+          if (role === 'farmer') {
+            window.location.href = '/farmer-dashboard';
+          } else {
+            window.location.href = '/swipe';
+          }
         }
       } else {
         // Sign In
@@ -53,7 +60,14 @@ const Auth = () => {
         if (data.session) {
           setMessage('Signed in successfully!');
           setMessageType('success');
-          // Redirect or update UI state here
+          
+          // Get user role and redirect accordingly
+          const role = data.user.user_metadata?.user_role || 'consumer';
+          if (role === 'farmer') {
+            window.location.href = '/farmer-dashboard';
+          } else {
+            window.location.href = '/swipe';
+          }
         }
       }
     } catch (error) {
