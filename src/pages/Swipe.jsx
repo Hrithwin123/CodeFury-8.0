@@ -704,7 +704,7 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
   const [bidding, setBidding] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
-  const [currentHighestBid, setCurrentHighestBid] = useState(0);
+  const [currentHighestBid, setCurrentHighestBid] = useState({ amount: 0, distributor_id: null });
   
   // Razorpay integration states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -791,7 +791,7 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
     try {
       const { data, error } = await supabase
         .from('distributor_bids')
-        .select('bid_amount')
+        .select('bid_amount, distributor_id')
         .eq('produce_id', produceId)
         .eq('status', 'pending')
         .order('bid_amount', { ascending: false })
@@ -800,14 +800,17 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
       if (error) throw error;
       
       if (data && data.length > 0) {
-        return parseFloat(data[0].bid_amount);
+        return {
+          amount: parseFloat(data[0].bid_amount),
+          distributor_id: data[0].distributor_id
+        };
       }
-      return 0;
+      return { amount: 0, distributor_id: null };
     } catch (error) {
       console.error('Error fetching highest bid:', error);
-      return 0;
+      return { amount: 0, distributor_id: null };
     }
-    };
+  };
   
   // Razorpay payment functions
   const handlePaymentSuccess = async (response) => {
@@ -953,6 +956,13 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
       return;
     }
 
+    // Check if user is already the highest bidder
+    if (currentHighestBid.distributor_id === user?.id) {
+      setMessage('You already have the highest bid for this produce!');
+      setMessageType('error');
+      return;
+    }
+
     // Extract the numeric price from farmer's price (remove "₹" and "kg" etc.)
     const farmerPrice = parseFloat(selectedProduct.price.replace(/[^\d.]/g, ''));
     const bidPrice = parseFloat(bidAmount);
@@ -962,14 +972,14 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
       console.log('Current highest bid:', currentHighestBid);
     
     // Determine minimum bid: either farmer's price or current highest bid, whichever is higher
-    const minBid = Math.max(farmerPrice, currentHighestBid);
+    const minBid = Math.max(farmerPrice, currentHighestBid.amount);
     
           console.log('Minimum bid required:', minBid);
     
     // Check if bid is below minimum required bid
     if (bidPrice < minBid) {
       console.log('Bid below minimum required');
-      if (currentHighestBid > farmerPrice) {
+      if (currentHighestBid.amount > farmerPrice) {
         setMessage(`Bid must be at least ₹${minBid}/kg (current highest bid)`);
       } else {
         setMessage(`Bid must be at least ₹${minBid}/kg (farmer's set price)`);
@@ -1129,7 +1139,7 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
                 {userRole === 'distributor' && (
                   <div className="flex space-x-3">
                                          <button
-                       onClick={async () => {
+                                              onClick={async () => {
                          setSelectedProduct(item);
                          setShowBidModal(true);
                          setBidAmount('');
@@ -1139,10 +1149,15 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
                          const highestBid = await getCurrentHighestBid(item.id);
                          setCurrentHighestBid(highestBid);
                        }}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-medium transition-colors"
-                    >
-                      Place Bid
-                    </button>
+                       disabled={currentHighestBid.distributor_id === user?.id}
+                       className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+                         currentHighestBid.distributor_id === user?.id
+                           ? 'bg-gray-400 cursor-not-allowed text-gray-600'
+                           : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                       }`}
+                     >
+                       {currentHighestBid.distributor_id === user?.id ? 'Already Highest Bidder' : 'Place Bid'}
+                     </button>
                     <button
                       onClick={() => onRemoveItem(item.id)}
                       className="px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors"
@@ -1188,9 +1203,15 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
              <div className="bg-gray-50 rounded-lg p-3 mb-4">
                <div className="text-sm text-gray-600">
                  <p><strong>Farmer's Price:</strong> {selectedProduct.price}</p>
-                 {currentHighestBid > 0 && (
-                   <p><strong>Current Highest Bid:</strong> ₹{currentHighestBid}/kg <span className="text-orange-600">(You must beat this!)</span></p>
-                 )}
+                                   {currentHighestBid.amount > 0 && (
+                    <p><strong>Current Highest Bid:</strong> ₹{currentHighestBid.amount}/kg 
+                      {currentHighestBid.distributor_id === user?.id ? (
+                        <span className="text-green-600"> (You have the highest bid!)</span>
+                      ) : (
+                        <span className="text-orange-600"> (You must beat this!)</span>
+                      )}
+                    </p>
+                  )}
                  <p><strong>Available Quantity:</strong> {selectedProduct.quantity}</p>
                </div>
              </div>
@@ -1206,15 +1227,15 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
                      onChange={(e) => setBidAmount(e.target.value)}
                      placeholder="Enter your bid per kg"
                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                     min={Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid)}
+                                           min={Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid.amount)}
                      step="0.01"
                    />
-                   <p className="text-xs text-orange-600 mt-1">
-                     Minimum bid: ₹{Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid)}/kg
-                     {currentHighestBid > parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')) && (
-                       <span className="text-red-600"> (must beat current highest bid)</span>
-                     )}
-                   </p>
+                                       <p className="text-xs text-orange-600 mt-1">
+                      Minimum bid: ₹{Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid.amount)}/kg
+                      {currentHighestBid.amount > parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')) && (
+                        <span className="text-red-600"> (must beat current highest bid)</span>
+                      )}
+                    </p>
                </div>
                
                <div>
