@@ -674,7 +674,7 @@ const FarmerDashboard = () => {
           </button>
         </div>
 
-        {activeTab === 'listings' ? (
+        {activeTab === 'listings' && (
           <>
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -740,95 +740,96 @@ const FarmerDashboard = () => {
               </div>
             </div>
           </>
-        ) : (
-          /* Bids Tab */
-                     <div className="space-y-6">
-             {/* Info Section */}
-             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-               <div className="flex items-start space-x-3">
-                 <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
-                   <span className="text-white text-xs font-bold">i</span>
-                 </div>
-                 <div className="text-sm text-blue-800">
-                   <p className="font-medium mb-1">Automatic Bid Replacement</p>
-                   <p>When a distributor places a better bid (higher price × quantity), lower bids are automatically marked as "Replaced". This ensures you always see the best offers first.</p>
-                 </div>
-               </div>
-             </div>
-             
-             <div className="bg-white rounded-xl shadow-sm p-6">
-               <h2 className="text-lg font-semibold text-gray-900 mb-4">Bids Received on Your Produce</h2>
-              
-              {receivedBids.length > 0 ? (
-                <div className="space-y-4">
-                  {receivedBids.map((bid) => (
-                    <div key={bid.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <img
-                            src={bid.produce?.image_url || 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&h=100&fit=crop&crop=center'}
-                            alt={bid.produce?.name}
-                            className="w-16 h-16 rounded-lg object-cover"
-                          />
-                          <div>
-                            <h4 className="font-medium text-gray-900">{bid.produce?.name}</h4>
-                            <p className="text-sm text-gray-500">Bid by: {bid.distributor?.email}</p>
-                                                         <div className="flex items-center space-x-4 mt-1 text-sm">
-                               <span className="text-emerald-600 font-medium">Bid: ₹{bid.bid_amount}/kg</span>
-                               <span className="text-gray-500">Quantity: {bid.bid_quantity}kg</span>
-                             </div>
-                          </div>
-                        </div>
-                        
-                        <div className="text-right">
-                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                             bid.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                             bid.status === 'accepted' ? 'bg-green-100 text-green-800' :
-                             bid.status === 'replaced' ? 'bg-orange-100 text-orange-800' :
-                             'bg-red-100 text-red-800'
-                           }`}>
-                             {bid.status === 'pending' ? 'Pending' :
-                              bid.status === 'accepted' ? 'Accepted' : 
-                              bid.status === 'replaced' ? 'Replaced' :
-                              'Rejected'}
-                           </span>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {new Date(bid.created_at).toLocaleDateString()}
-                          </p>
-                          
-                          {bid.status === 'pending' && (
-                            <div className="flex space-x-2 mt-2">
-                              <button
-                                onClick={() => handleBidAction(bid.id, 'accepted')}
-                                className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
-                              >
-                                Accept
-                              </button>
-                              <button
-                                onClick={() => handleBidAction(bid.id, 'rejected')}
-                                className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Gavel className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No bids received yet</h3>
-                  <p className="text-gray-500">When distributors bid on your produce, you'll see them here.</p>
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
-        {/* Equipment Marketplace Tab */}
+        {activeTab === 'bids' && (
+          /* Bids Tab */
+          <div className="space-y-6">
+            {/* Info Section */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                  <span className="text-white text-xs font-bold">i</span>
+                </div>
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-1">Automatic Bid Replacement</p>
+                  <p>When a distributor places a better bid (higher price × quantity), lower bids are automatically marked as "Replaced". This ensures you always see the best offers first.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Bids Received on Your Produce</h2>
+             
+             {receivedBids.length > 0 ? (
+               <div className="space-y-4">
+                 {receivedBids.map((bid) => (
+                   <div key={bid.id} className="border border-gray-200 rounded-lg p-4">
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center space-x-4">
+                         <img
+                           src={bid.produce?.image_url || 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&h=100&fit=crop&crop=center'}
+                           alt={bid.produce?.name}
+                           className="w-16 h-16 rounded-lg object-cover"
+                         />
+                         <div>
+                           <h4 className="font-medium text-gray-900">{bid.produce?.name}</h4>
+                           <p className="text-sm text-gray-500">Bid by: {bid.distributor?.email}</p>
+                           <div className="flex items-center space-x-4 mt-1 text-sm">
+                             <span className="text-emerald-600 font-medium">Bid: ₹{bid.bid_amount}/kg</span>
+                             <span className="text-gray-500">Quantity: {bid.bid_quantity}kg</span>
+                           </div>
+                         </div>
+                       </div>
+                       
+                       <div className="text-right">
+                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                           bid.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                           bid.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                           bid.status === 'replaced' ? 'bg-orange-100 text-orange-800' :
+                           'bg-red-100 text-red-800'
+                         }`}>
+                           {bid.status === 'pending' ? 'Pending' :
+                            bid.status === 'accepted' ? 'Accepted' : 
+                            bid.status === 'replaced' ? 'Replaced' :
+                            'Rejected'}
+                         </span>
+                         <p className="text-xs text-gray-500 mt-1">
+                           {new Date(bid.created_at).toLocaleDateString()}
+                         </p>
+                         
+                         {bid.status === 'pending' && (
+                           <div className="flex space-x-2 mt-2">
+                             <button
+                               onClick={() => handleBidAction(bid.id, 'accepted')}
+                               className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
+                             >
+                               Accept
+                             </button>
+                             <button
+                               onClick={() => handleBidAction(bid.id, 'rejected')}
+                               className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
+                             >
+                               Reject
+                             </button>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             ) : (
+               <div className="text-center py-8">
+                 <Gavel className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                 <h3 className="text-lg font-medium text-gray-900 mb-2">No bids received yet</h3>
+                 <p className="text-gray-500">When distributors bid on your produce, you'll see them here.</p>
+               </div>
+             )}
+           </div>
+         </div>
+        )}
+
         {activeTab === 'equipment' && (
           <div className="bg-white rounded-3xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-6">
