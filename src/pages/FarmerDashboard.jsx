@@ -17,7 +17,11 @@ import {
   Package,
   Tag,
   Star,
-  AlertCircle
+  AlertCircle,
+  Gavel,
+  Wrench,
+  Shield,
+  CheckCircle
 } from 'lucide-react';
 import { supabase, getStorageBucket } from '../../supabaseClient.js';
 
@@ -31,6 +35,8 @@ const FarmerDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('listings'); // 'listings', 'bids', or 'equipment'
+  const [receivedBids, setReceivedBids] = useState([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -83,8 +89,81 @@ const FarmerDashboard = () => {
   useEffect(() => {
     if (user && user.id) {
       fetchMyListings();
+      fetchReceivedBids();
     }
   }, [user]);
+
+  // Fetch bids received on farmer's produce
+  const fetchReceivedBids = async () => {
+    try {
+      if (!user?.id) return;
+      
+      // First, get all bids
+      const { data: bidsData, error: bidsError } = await supabase
+        .from('distributor_bids')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (bidsError) throw bidsError;
+
+      // Then, get the produce details for these bids
+      if (bidsData && bidsData.length > 0) {
+        const produceIds = [...new Set(bidsData.map(bid => bid.produce_id))];
+        
+        const { data: produceData, error: produceError } = await supabase
+          .from('farmer_listings')
+          .select('*')
+          .in('id', produceIds)
+          .eq('user_id', user.id);
+
+        if (produceError) throw produceError;
+
+        // Filter bids to only show those on this farmer's produce
+        const farmerBids = bidsData.filter(bid => 
+          produceData.some(produce => produce.id === bid.produce_id)
+        );
+
+        // Get distributor emails for these bids
+        const distributorIds = [...new Set(farmerBids.map(bid => bid.distributor_id))];
+        
+        // Get user emails from auth.users
+        const { data: userData, error: userError } = await supabase
+          .from('auth.users')
+          .select('id, email')
+          .in('id', distributorIds);
+
+        if (userError) {
+          console.warn('Could not fetch distributor emails:', userError);
+        }
+
+        // Create a map of user ID to email
+        const userEmailMap = {};
+        if (userData) {
+          userData.forEach(user => {
+            userEmailMap[user.id] = user.email;
+          });
+        }
+
+        // Enrich bids with produce details and distributor emails
+        const enrichedBids = farmerBids.map(bid => {
+          const produce = produceData.find(p => p.id === bid.produce_id);
+          const distributorEmail = userEmailMap[bid.distributor_id] || 'Unknown';
+          
+          return {
+            ...bid,
+            produce: produce || {},
+            distributor: { email: distributorEmail }
+          };
+        });
+
+        setReceivedBids(enrichedBids);
+      } else {
+        setReceivedBids([]);
+      }
+    } catch (error) {
+      console.error('Error fetching received bids:', error);
+    }
+  };
 
   const fetchMyListings = async () => {
     try {
@@ -336,6 +415,121 @@ const FarmerDashboard = () => {
     }
   };
 
+  // Handle bid acceptance/rejection
+  const handleBidAction = async (bidId, action) => {
+    try {
+      // Get the bid details first
+      const { data: bidData, error: bidError } = await supabase
+        .from('distributor_bids')
+        .select('*')
+        .eq('id', bidId)
+        .single();
+
+      if (bidError) throw bidError;
+
+      // Update bid status
+      const { error: updateError } = await supabase
+        .from('distributor_bids')
+        .update({ status: action })
+        .eq('id', bidId);
+      
+      if (updateError) throw updateError;
+
+      // If bid is accepted, update the produce quantity
+      if (action === 'accepted' && bidData) {
+        const { data: produceData, error: produceError } = await supabase
+          .from('farmer_listings')
+          .select('quantity')
+          .eq('id', bidData.produce_id)
+          .single();
+
+        if (produceError) throw produceError;
+
+        // Parse current quantity and subtract bid quantity
+        const currentQuantity = parseFloat(produceData.quantity.replace(/[^\d.]/g, ''));
+        const bidQuantity = parseFloat(bidData.bid_quantity);
+        const newQuantity = Math.max(0, currentQuantity - bidQuantity);
+
+        // Update the produce listing with new quantity
+        const { error: quantityError } = await supabase
+          .from('farmer_listings')
+          .update({ 
+            quantity: `${newQuantity}kg available`,
+            current_bids: (produceData.current_bids || 0) + 1
+          })
+          .eq('id', bidData.produce_id);
+
+        if (quantityError) {
+          console.warn('Could not update produce quantity:', quantityError);
+        }
+
+        // If quantity becomes 0, mark as sold out
+        if (newQuantity === 0) {
+          await supabase
+            .from('farmer_listings')
+            .update({ status: 'sold_out' })
+            .eq('id', bidData.produce_id);
+        }
+      }
+      
+      // Refresh bids and listings
+      await fetchReceivedBids();
+      await fetchMyListings();
+      
+      // Show success message for accepted bids
+      if (action === 'accepted') {
+        setError(''); // Clear any previous errors
+        // You could add a success state here if you want to show success messages
+      } else {
+        setError('');
+      }
+    } catch (error) {
+      console.error('Error updating bid status:', error);
+      setError(`Failed to ${action} bid`);
+    }
+  };
+
+  // Function to automatically replace lower bids with better ones
+  const replaceLowerBids = async (newBid) => {
+    try {
+      // Get all pending bids for the same produce
+      const { data: existingBids, error } = await supabase
+        .from('distributor_bids')
+        .select('*')
+        .eq('produce_id', newBid.produce_id)
+        .eq('status', 'pending');
+
+      if (error) throw error;
+
+      // Calculate bid score (price * quantity for better comparison)
+      const newBidScore = parseFloat(newBid.bid_amount) * parseFloat(newBid.bid_quantity);
+      
+      // Find bids that should be replaced (lower score)
+      const bidsToReplace = existingBids.filter(bid => {
+        const bidScore = parseFloat(bid.bid_amount) * parseFloat(bid.bid_quantity);
+        return bidScore < newBidScore && bid.id !== newBid.id;
+      });
+
+      // Update lower bids to rejected status
+      if (bidsToReplace.length > 0) {
+        const bidIds = bidsToReplace.map(bid => bid.id);
+        const { error: updateError } = await supabase
+          .from('distributor_bids')
+          .update({ status: 'replaced' })
+          .in('id', bidIds);
+
+        if (updateError) {
+          console.warn('Could not update lower bids:', updateError);
+        }
+      }
+
+      return bidsToReplace.length;
+    } catch (error) {
+      console.error('Error replacing lower bids:', error);
+      return 0;
+    }
+  };
+
   const toggleStatus = async (id) => {
     try {
       // Check if user is available
@@ -437,66 +631,214 @@ const FarmerDashboard = () => {
           </div>
         )}
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <Package className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">{myListings.length}</p>
-                <p className="text-sm text-gray-500">Total Listings</p>
-              </div>
+        {/* Tab Navigation */}
+        <div className="flex space-x-1 bg-white p-1 rounded-xl shadow-sm mb-8">
+          <button
+            onClick={() => setActiveTab('listings')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'listings'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Package className="w-4 h-4" />
+              <span>My Listings</span>
             </div>
-          </div>
-          
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <Eye className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">{myListings.filter(item => item.status === 'active').length}</p>
-                <p className="text-sm text-gray-500">Active Listings</p>
-              </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('bids')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'bids'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Gavel className="w-4 h-4" />
+              <span>Received Bids</span>
             </div>
-          </div>
-          
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                <Star className="w-6 h-6 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">
-                  {myListings.length > 0 
-                    ? (myListings.reduce((sum, item) => sum + (item.rating || 0), 0) / myListings.length).toFixed(1)
-                    : '0'
-                  }
-                </p>
-                <p className="text-sm text-gray-500">Avg Rating</p>
-              </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('equipment')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'equipment'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Wrench className="w-4 h-4" />
+              <span>Equipment Marketplace</span>
             </div>
-          </div>
-          
-          <div className="bg-white rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">
-                  {myListings.reduce((sum, item) => {
-                    const price = parseInt(item.price.replace(/[^\d]/g, '') || 0);
-                    return sum + price;
-                  }, 0)}
-                </p>
-                <p className="text-sm text-gray-500">Total Value</p>
-              </div>
-            </div>
-          </div>
+          </button>
         </div>
+
+        {activeTab === 'listings' ? (
+          <>
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-2xl p-6 shadow-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-800">{myListings.length}</p>
+                    <p className="text-sm text-gray-500">Total Listings</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Eye className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-800">{myListings.filter(item => item.status === 'active').length}</p>
+                    <p className="text-sm text-gray-500">Active Listings</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+                    <Star className="w-6 h-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-800">
+                      {myListings.length > 0 
+                        ? (myListings.reduce((sum, item) => sum + (item.rating || 0), 0) / myListings.length).toFixed(1)
+                        : '0'
+                      }
+                    </p>
+                    <p className="text-sm text-gray-500">Avg Rating</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <DollarSign className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-800">
+                      {myListings.length > 0 
+                        ? myListings.reduce((sum, item) => {
+                            const price = parseInt(item.price.replace(/[^\d]/g, '') || 0);
+                            return sum + price;
+                          }, 0)
+                        : 0
+                      }
+                    </p>
+                    <p className="text-sm text-gray-500">Total Value</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Bids Tab */
+                     <div className="space-y-6">
+             {/* Info Section */}
+             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+               <div className="flex items-start space-x-3">
+                 <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                   <span className="text-white text-xs font-bold">i</span>
+                 </div>
+                 <div className="text-sm text-blue-800">
+                   <p className="font-medium mb-1">Automatic Bid Replacement</p>
+                   <p>When a distributor places a better bid (higher price × quantity), lower bids are automatically marked as "Replaced". This ensures you always see the best offers first.</p>
+                 </div>
+               </div>
+             </div>
+             
+             <div className="bg-white rounded-xl shadow-sm p-6">
+               <h2 className="text-lg font-semibold text-gray-900 mb-4">Bids Received on Your Produce</h2>
+              
+              {receivedBids.length > 0 ? (
+                <div className="space-y-4">
+                  {receivedBids.map((bid) => (
+                    <div key={bid.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <img
+                            src={bid.produce?.image_url || 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=100&h=100&fit=crop&crop=center'}
+                            alt={bid.produce?.name}
+                            className="w-16 h-16 rounded-lg object-cover"
+                          />
+                          <div>
+                            <h4 className="font-medium text-gray-900">{bid.produce?.name}</h4>
+                            <p className="text-sm text-gray-500">Bid by: {bid.distributor?.email}</p>
+                                                         <div className="flex items-center space-x-4 mt-1 text-sm">
+                               <span className="text-emerald-600 font-medium">Bid: ₹{bid.bid_amount}/kg</span>
+                               <span className="text-gray-500">Quantity: {bid.bid_quantity}kg</span>
+                             </div>
+                          </div>
+                        </div>
+                        
+                        <div className="text-right">
+                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                             bid.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                             bid.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                             bid.status === 'replaced' ? 'bg-orange-100 text-orange-800' :
+                             'bg-red-100 text-red-800'
+                           }`}>
+                             {bid.status === 'pending' ? 'Pending' :
+                              bid.status === 'accepted' ? 'Accepted' : 
+                              bid.status === 'replaced' ? 'Replaced' :
+                              'Rejected'}
+                           </span>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(bid.created_at).toLocaleDateString()}
+                          </p>
+                          
+                          {bid.status === 'pending' && (
+                            <div className="flex space-x-2 mt-2">
+                              <button
+                                onClick={() => handleBidAction(bid.id, 'accepted')}
+                                className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                onClick={() => handleBidAction(bid.id, 'rejected')}
+                                className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Gavel className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No bids received yet</h3>
+                  <p className="text-gray-500">When distributors bid on your produce, you'll see them here.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Equipment Marketplace Tab */}
+        {activeTab === 'equipment' && (
+          <div className="bg-white rounded-3xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Equipment Marketplace</h2>
+              <span className="text-sm text-gray-500">Browse agricultural equipment from verified sellers</span>
+            </div>
+            
+            <EquipmentMarketplace />
+          </div>
+        )}
 
         {/* Add/Edit Form Modal */}
         {showAddForm && (
@@ -751,8 +1093,9 @@ const FarmerDashboard = () => {
           </div>
         )}
 
-        {/* My Listings */}
-        <div className="bg-white rounded-3xl shadow-lg p-6">
+        {activeTab === 'listings' && (
+          /* My Listings */
+          <div className="bg-white rounded-3xl shadow-lg p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-800">My Produce Listings</h2>
             <span className="text-sm text-gray-500">{myListings.length} listings</span>
@@ -787,22 +1130,25 @@ const FarmerDashboard = () => {
                       alt={item.name}
                       className="w-full h-48 object-cover"
                     />
-                    <div className="absolute top-3 right-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        item.status === 'active' 
-                          ? 'bg-emerald-100 text-emerald-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {item.status === 'active' ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
+                                         <div className="absolute top-3 right-3">
+                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                         item.status === 'active' 
+                           ? 'bg-emerald-100 text-emerald-700' 
+                           : item.status === 'sold_out'
+                           ? 'bg-red-100 text-red-700'
+                           : 'bg-gray-100 text-gray-600'
+                       }`}>
+                         {item.status === 'active' ? 'Active' : 
+                          item.status === 'sold_out' ? 'Sold Out' : 'Inactive'}
+                       </span>
+                     </div>
                   </div>
 
                   <div className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-gray-800 text-lg">{item.name}</h3>
-                      <span className="text-emerald-600 font-bold">{item.price}</span>
-                    </div>
+                                         <div className="flex items-start justify-between mb-2">
+                       <h3 className="font-semibold text-gray-800 text-lg">{item.name}</h3>
+                       <span className="text-emerald-600 font-bold">Price: {item.price}</span>
+                     </div>
                     
                     <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
                     
@@ -811,10 +1157,10 @@ const FarmerDashboard = () => {
                       <span className="text-sm text-gray-500">{item.location}</span>
                     </div>
 
-                    <div className="flex items-center space-x-2 mb-3">
-                      <Package className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-500">{item.quantity}</span>
-                    </div>
+                                         <div className="flex items-center space-x-2 mb-3">
+                       <Package className="w-4 h-4 text-gray-400" />
+                       <span className="text-sm text-gray-500">Available: {item.quantity}</span>
+                     </div>
 
                     {item.certifications && item.certifications.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
@@ -871,7 +1217,245 @@ const FarmerDashboard = () => {
             </div>
           )}
         </div>
+        )}
       </div>
+    </div>
+  );
+};
+
+// Equipment Marketplace Component
+const EquipmentMarketplace = () => {
+  const [equipment, setEquipment] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const categories = [
+    'All', 'Hand Tools', 'Power Tools', 'Irrigation Systems', 'Harvesting Equipment', 
+    'Soil Testing Kits', 'Pest Control Tools', 'Storage Solutions', 'Other'
+  ];
+
+  useEffect(() => {
+    fetchEquipment();
+  }, []);
+
+  const fetchEquipment = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('equipment_listings')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setEquipment(data || []);
+    } catch (error) {
+      console.error('Error fetching equipment:', error);
+      setError('Failed to fetch equipment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredEquipment = equipment.filter(item => {
+    const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.brand?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  if (loading) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Wrench className="w-8 h-8 text-blue-600 animate-spin" />
+        </div>
+        <p className="text-gray-600">Loading equipment...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-red-600" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading equipment</h3>
+        <p className="text-gray-500 mb-4">{error}</p>
+        <button
+          onClick={fetchEquipment}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Search and Filter */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex-1">
+          <input
+            type="text"
+            placeholder="Search equipment by name, description, or brand..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        <div className="flex-shrink-0">
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {categories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Equipment Grid */}
+      {filteredEquipment.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Wrench className="w-10 h-10 text-gray-400" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">No equipment found</h3>
+          <p className="text-gray-500">
+            {searchTerm || selectedCategory !== 'All' 
+              ? 'Try adjusting your search or filter criteria'
+              : 'Equipment sellers will start listing their products soon!'
+            }
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredEquipment.map((item) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all"
+            >
+              <div className="relative">
+                <img
+                  src={item.image_url || "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=500&fit=crop&crop=center"}
+                  alt={item.name}
+                  className="w-full h-48 object-cover"
+                />
+                
+                {/* Certification Badge */}
+                {item.is_certified && (
+                  <div className="absolute top-3 left-3">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1">
+                      <Shield className="w-3 h-3" />
+                      <span>Certified</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Category Badge */}
+                <div className="absolute top-3 right-3">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                    {item.category}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-semibold text-gray-800 text-lg">{item.name}</h3>
+                  <span className="text-blue-600 font-bold">Price: {item.price}</span>
+                </div>
+                
+                <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
+                
+                <div className="space-y-2 mb-3">
+                  {item.brand && item.model && (
+                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                      <Package className="w-4 h-4" />
+                      <span>{item.brand} {item.model}</span>
+                    </div>
+                  )}
+                  
+                  {item.location && (
+                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                      <MapPin className="w-4 h-4" />
+                      <span>{item.location}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <Calendar className="w-4 h-4" />
+                    <span>Condition: {item.condition}</span>
+                  </div>
+                </div>
+
+                {/* Certifications */}
+                {item.certifications && item.certifications.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {item.certifications.slice(0, 3).map((cert, index) => (
+                      <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full flex items-center space-x-1">
+                        <CheckCircle className="w-3 h-3" />
+                        <span>{cert}</span>
+                      </span>
+                    ))}
+                    {item.certifications.length > 3 && (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                        +{item.certifications.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Features */}
+                {item.features && item.features.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {item.features.slice(0, 3).map((feature, index) => (
+                      <span key={index} className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        {feature}
+                      </span>
+                    ))}
+                    {item.features.length > 3 && (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                        +{item.features.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                      <span className="text-sm text-gray-600">{item.rating || 0}</span>
+                    </div>
+                    <span className="text-xs text-gray-400">({item.reviews_count || 0} reviews)</span>
+                  </div>
+                  
+                  <button
+                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                    onClick={() => {
+                      // TODO: Implement contact seller functionality
+                      alert('Contact seller functionality coming soon!');
+                    }}
+                  >
+                    Contact Seller
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

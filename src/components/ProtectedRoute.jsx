@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient.js';
 import { Leaf } from 'lucide-react';
 
-const ProtectedRoute = ({ children, allowedRoles = ['consumer', 'farmer'], redirectTo = '/auth' }) => {
+const ProtectedRoute = ({ children, allowedRoles = ['farmer', 'distributor', 'equipment_seller'], redirectTo = '/auth' }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,11 +19,16 @@ const ProtectedRoute = ({ children, allowedRoles = ['consumer', 'farmer'], redir
           // Check if user has access to this route
           if (!allowedRoles.includes(role)) {
             // Redirect based on role
-            if (role === 'farmer') {
-              window.location.href = '/farmer-dashboard';
-            } else {
-              window.location.href = '/swipe';
-            }
+                           if (role === 'farmer') {
+                 window.location.href = '/farmer-dashboard';
+               } else if (role === 'distributor') {
+                 window.location.href = '/distributor-dashboard';
+               } else if (role === 'equipment_seller') {
+                 window.location.href = '/equipment-seller-dashboard';
+               } else {
+                 // Default to distributor dashboard for any other role
+                 window.location.href = '/distributor-dashboard';
+               }
             return;
           }
         } else {

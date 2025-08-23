@@ -3,6 +3,8 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Swipe from "./pages/Swipe";
 import FarmerDashboard from "./pages/FarmerDashboard";
+import EquipmentSellerDashboard from "./pages/EquipmentSellerDashboard";
+
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -12,13 +14,24 @@ export default function App() {
         <Route path="/" element={<Landing/>}></Route>
         <Route path="/auth" element={<Auth/>}></Route>
         <Route path="/swipe" element={
-          <ProtectedRoute allowedRoles={['consumer']}>
+          <ProtectedRoute allowedRoles={['distributor']}>
             <Swipe/>
           </ProtectedRoute>
         }></Route>
+
         <Route path="/farmer-dashboard" element={
           <ProtectedRoute allowedRoles={['farmer']}>
             <FarmerDashboard/>
+          </ProtectedRoute>
+        }></Route>
+        <Route path="/distributor-dashboard" element={
+          <ProtectedRoute allowedRoles={['distributor']}>
+            <Swipe/>
+          </ProtectedRoute>
+        }></Route>
+        <Route path="/equipment-seller-dashboard" element={
+          <ProtectedRoute allowedRoles={['equipment_seller']}>
+            <EquipmentSellerDashboard/>
           </ProtectedRoute>
         }></Route>
       </Routes>
