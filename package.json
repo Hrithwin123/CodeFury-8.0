@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",
     "date-fns": "^3.6.0",
+    "framer-motion": "^12.23.12",
     "lucide-react": "^0.541.0",
     "razorpay": "^2.9.2",
     "react": "^19.1.1",
