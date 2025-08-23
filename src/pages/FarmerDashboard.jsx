@@ -495,7 +495,7 @@ const FarmerDashboard = () => {
       console.log('Calling Gemini AI API with:', { crop: apiCommodity, location: formData.location.trim() });
       
       // Call the new AI price suggestion endpoint
-      const response = await fetch(`http://localhost:5000/api/ai-price-suggestion`, {
+      const response = await fetch(`https://codefury-8-0-flask-bakend.onrender.com/api/ai-price-suggestion`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -534,7 +534,7 @@ const FarmerDashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching Mandi price:', error);
-      setMandiPriceError(`Failed to fetch market price: ${error.message}. Make sure your Flask backend is running on port 5000.`);
+      setMandiPriceError(`Failed to fetch market price: ${error.message}. Please try again later.`);
     } finally {
       setMandiPriceLoading(false);
     }
