@@ -469,18 +469,6 @@ const FarmerDashboard = () => {
         'foxtail': 'foxtail',
         'foxtail millet': 'foxtail',
         'brown top': 'brown top',
-        'brown top millet': 'brown top',
-        'kodo': 'kodo',
-        'kodo millet': 'kodo',
-        'proso': 'proso',
-        'proso millet': 'proso',
-        'barnyard': 'barnyard',
-        'barnyard millet': 'barnyard',
-        'little': 'little',
-        'little millet': 'little',
-        'foxtail': 'foxtail',
-        'foxtail millet': 'foxtail',
-        'brown top': 'brown top',
         'brown top millet': 'brown top'
       };
 
