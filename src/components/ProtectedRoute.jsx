@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import { Leaf } from 'lucide-react';
 
 const ProtectedRoute = ({ children, allowedRoles = ['farmer', 'distributor', 'equipment_seller'], redirectTo = '/auth' }) => {

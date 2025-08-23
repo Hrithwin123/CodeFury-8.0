@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, PanInfo, useMotionValue, useTransform } from 'framer-motion';
-import { supabase } from '../../supabaseClient.js';
+import { supabase } from '../../supabaseClient';
 import { 
   Heart, 
   X, 

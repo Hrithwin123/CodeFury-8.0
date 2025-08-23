@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import { CreditCard, Save, TestTube, AlertCircle, CheckCircle } from 'lucide-react';
 
 const DashboardPaymentSettings = ({ user }) => {

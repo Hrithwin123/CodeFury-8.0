@@ -24,7 +24,7 @@ import {
   CheckCircle,
   CreditCard
 } from 'lucide-react';
-import { supabase, getStorageBucket } from '../../supabaseClient.js';
+import { supabase, getStorageBucket } from '../../supabaseClient';
 import DashboardPaymentSettings from '../components/DashboardPaymentSettings';
 
 const FarmerDashboard = () => {

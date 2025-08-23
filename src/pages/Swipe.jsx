@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, useMotionValue, useTransform, AnimatePresence, useAnimation } from 'framer-motion';
 import { Heart, X, Star, MapPin, ShoppingCart, Clock, Leaf, ArrowLeft, Gavel } from 'lucide-react';
-import { supabase } from '../../supabaseClient.js';
+import { supabase } from '../../supabaseClient';
 
 // CSS to hide scrollbars and optimize rendering
 const styles = `

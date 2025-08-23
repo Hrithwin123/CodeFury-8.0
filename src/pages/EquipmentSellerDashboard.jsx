@@ -21,7 +21,7 @@ import {
   Award,
   CheckCircle
 } from 'lucide-react';
-import { supabase, getStorageBucket } from '../../supabaseClient.js';
+import { supabase, getStorageBucket } from '../../supabaseClient';
 
 const EquipmentSellerDashboard = () => {
   const [user, setUser] = useState(null);
