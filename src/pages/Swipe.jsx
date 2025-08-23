@@ -61,6 +61,8 @@ const Swipe = () => {
           
           // Fetch produce data from database
           await fetchProduceData();
+          // Load liked items from database
+          await loadLikedItems();
         } else {
           console.log('No user found, but continuing for testing');
           setUserRole('distributor'); // Set default role for testing
@@ -78,6 +80,110 @@ const Swipe = () => {
 
     checkUser();
   }, []);
+
+  // Load liked items from database
+  const loadLikedItems = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('distributor_preferences')
+        .select(`
+          *,
+          produce:produce_id(*)
+        `)
+        .eq('distributor_id', user.id)
+        .order('liked_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Transform the data to match the expected format
+        const transformedLikedItems = data.map(pref => {
+          const produce = pref.produce;
+          return {
+            id: produce.id,
+            name: produce.name,
+            price: produce.price,
+            farm: produce.farm_name || 'Local Farm',
+            location: produce.location || 'Unknown Location',
+            rating: produce.rating || 0,
+            reviews: produce.reviews_count || 0,
+            image: produce.image_url || 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=500&fit=crop&crop=center',
+            description: produce.description || 'No description available',
+            category: produce.category || 'Other',
+            harvestDate: produce.harvest_date || 'Recently',
+            quantity: produce.quantity || 'Quantity not specified',
+            certifications: produce.certifications || [],
+            freshness: produce.freshness || 100,
+            tags: produce.tags || [],
+            current_bids: produce.current_bids || 0,
+            starting_bid: produce.starting_bid,
+            auction_end_date: produce.auction_end_date,
+            is_auction: produce.is_auction || false
+          };
+        });
+        
+        setLikedItems(transformedLikedItems);
+        console.log('Loaded liked items from database:', transformedLikedItems);
+      }
+    } catch (error) {
+      console.error('Error loading liked items:', error);
+    }
+  };
+
+  // Save liked item to database
+  const saveLikedItem = async (item) => {
+    if (!user) return;
+    
+    try {
+      // Check if item is already liked to avoid duplicates
+      const { data: existing } = await supabase
+        .from('distributor_preferences')
+        .select('id')
+        .eq('distributor_id', user.id)
+        .eq('produce_id', item.id)
+        .single();
+
+      if (existing) {
+        console.log('Item already liked:', item.name);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('distributor_preferences')
+        .insert({
+          distributor_id: user.id,
+          produce_id: item.id
+        });
+
+      if (error) throw error;
+      console.log('Saved liked item to database:', item.name);
+    } catch (error) {
+      console.error('Error saving liked item:', error);
+    }
+  };
+
+  // Remove liked item from database and local state
+  const removeLikedItem = async (itemId) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('distributor_preferences')
+        .delete()
+        .eq('distributor_id', user.id)
+        .eq('produce_id', itemId);
+
+      if (error) throw error;
+      
+      // Remove from local state
+      setLikedItems(prev => prev.filter(item => item.id !== itemId));
+      console.log('Removed liked item from database and local state:', itemId);
+    } catch (error) {
+      console.error('Error removing liked item:', error);
+    }
+  };
 
   // Fetch produce data from database
   const fetchProduceData = async () => {
@@ -202,6 +308,8 @@ const Swipe = () => {
       if (direction === 'right') {
         // For distributors, just add to liked items (no modal interruption)
         setLikedItems(prev => [...prev, currentItem]);
+        // Save to database
+        saveLikedItem(currentItem);
       } else {
         setPassedItems(prev => [...prev, currentItem]);
       }
@@ -240,6 +348,8 @@ const Swipe = () => {
     if (direction === 'right') {
       // For distributors, just add to liked items (no modal interruption)
       setLikedItems(prev => [...prev, currentItem]);
+      // Save to database
+      saveLikedItem(currentItem);
     } else {
       setPassedItems(prev => [...prev, currentItem]);
     }
@@ -252,13 +362,29 @@ const Swipe = () => {
 
 
 
-  const resetAndGoBack = useCallback(() => {
+  const resetAndGoBack = useCallback(async () => {
     setCurrentIndex(0);
     setShowMatches(false);
+    
+    // Clear liked items from database
+    if (user && likedItems.length > 0) {
+      try {
+        const { error } = await supabase
+          .from('distributor_preferences')
+          .delete()
+          .eq('distributor_id', user.id);
+        
+        if (error) throw error;
+        console.log('Cleared all liked items from database');
+      } catch (error) {
+        console.error('Error clearing liked items:', error);
+      }
+    }
+    
     setLikedItems([]);
     setPassedItems([]);
     setIsAnimating(false);
-  }, []);
+  }, [user, likedItems]);
 
   const currentItem = filteredData[currentIndex];
   const visibleCards = filteredData.slice(currentIndex, currentIndex + 2);
@@ -280,7 +406,18 @@ const Swipe = () => {
   }
 
   if (showMatches) {
-    return <MatchesView likedItems={likedItems} userRole={userRole} user={user} onBack={() => setShowMatches(false)} onReset={resetAndGoBack} />;
+            return <MatchesView 
+          likedItems={likedItems} 
+          userRole={userRole} 
+          user={user} 
+          onBack={() => {
+            setShowMatches(false);
+            // Refresh liked items when going back to swiping
+            loadLikedItems();
+          }} 
+          onReset={resetAndGoBack}
+          onRemoveItem={removeLikedItem}
+        />;
   }
 
   // Show empty state if no produce data
@@ -558,7 +695,7 @@ const EnhancedCardContent = React.memo(({ card, userRole }) => (
   </>
 ));
 
-const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
+const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem }) => {
   const [showBidModal, setShowBidModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
@@ -566,6 +703,30 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
   const [bidding, setBidding] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
+  const [currentHighestBid, setCurrentHighestBid] = useState(0);
+
+  // Function to get current highest bid for a product
+  const getCurrentHighestBid = async (produceId) => {
+    try {
+      const { data, error } = await supabase
+        .from('distributor_bids')
+        .select('bid_amount')
+        .eq('produce_id', produceId)
+        .eq('status', 'pending')
+        .order('bid_amount', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        return parseFloat(data[0].bid_amount);
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error fetching highest bid:', error);
+      return 0;
+    }
+  };
 
   const handleBidSubmit = async () => {
     if (!selectedProduct || !bidAmount || !bidQuantity) return;
@@ -576,6 +737,24 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
     
     if (bidQuantityNum > availableQuantity) {
       setMessage(`Cannot bid for ${bidQuantityNum}kg when only ${availableQuantity}kg is available.`);
+      setMessageType('error');
+      return;
+    }
+
+    // Extract the numeric price from farmer's price (remove "₹" and "kg" etc.)
+    const farmerPrice = parseFloat(selectedProduct.price.replace(/[^\d.]/g, ''));
+    const bidPrice = parseFloat(bidAmount);
+    
+    // Determine minimum bid: either farmer's price or current highest bid, whichever is higher
+    const minBid = Math.max(farmerPrice, currentHighestBid);
+    
+    // Check if bid is below minimum required bid
+    if (bidPrice < minBid) {
+      if (currentHighestBid > farmerPrice) {
+        setMessage(`Bid must be at least ₹${minBid}/kg (current highest bid)`);
+      } else {
+        setMessage(`Bid must be at least ₹${minBid}/kg (farmer's set price)`);
+      }
       setMessageType('error');
       return;
     }
@@ -817,17 +996,30 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
                  )}
                 
                 {userRole === 'distributor' && (
-                  <button
-                    onClick={() => {
-                      setSelectedProduct(item);
-                      setShowBidModal(true);
-                      setBidAmount('');
-                      setBidQuantity('');
-                    }}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-medium transition-colors"
-                  >
-                    Place Bid
-                  </button>
+                  <div className="flex space-x-3">
+                                         <button
+                       onClick={async () => {
+                         setSelectedProduct(item);
+                         setShowBidModal(true);
+                         setBidAmount('');
+                         setBidQuantity('');
+                         
+                         // Fetch current highest bid for this product
+                         const highestBid = await getCurrentHighestBid(item.id);
+                         setCurrentHighestBid(highestBid);
+                       }}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-medium transition-colors"
+                    >
+                      Place Bid
+                    </button>
+                    <button
+                      onClick={() => onRemoveItem(item.id)}
+                      className="px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors"
+                      title="Remove from liked items"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 )}
               </motion.div>
             ))}
@@ -853,17 +1045,21 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
                 <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
                   <span className="text-white text-xs font-bold">i</span>
                 </div>
-                <div className="text-xs text-blue-800">
-                  <p className="font-medium">Better bids automatically replace lower ones!</p>
-                  <p>Your bid score = Price × Quantity. Higher scores win!</p>
-                </div>
+                                 <div className="text-xs text-blue-800">
+                   <p className="font-medium">Better bids automatically replace lower ones!</p>
+                   <p>Your bid score = Price × Quantity. Higher scores win!</p>
+                   <p className="text-orange-700 mt-1"><strong>Note:</strong> Your bid must beat the current highest bid (or farmer's price if no bids yet).</p>
+                 </div>
               </div>
             </div>
             
                          {/* Current Produce Info */}
              <div className="bg-gray-50 rounded-lg p-3 mb-4">
                <div className="text-sm text-gray-600">
-                 <p><strong>Current Price:</strong> {selectedProduct.price}</p>
+                 <p><strong>Farmer's Price:</strong> {selectedProduct.price}</p>
+                 {currentHighestBid > 0 && (
+                   <p><strong>Current Highest Bid:</strong> ₹{currentHighestBid}/kg <span className="text-orange-600">(You must beat this!)</span></p>
+                 )}
                  <p><strong>Available Quantity:</strong> {selectedProduct.quantity}</p>
                </div>
              </div>
@@ -873,15 +1069,21 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user }) => {
                  <label className="block text-sm font-medium text-gray-700 mb-2">
                    Your Bid Amount (₹/kg)
                  </label>
-                 <input
-                   type="number"
-                   value={bidAmount}
-                   onChange={(e) => setBidAmount(e.target.value)}
-                   placeholder="Enter your bid per kg"
-                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                   min="0"
-                   step="0.01"
-                 />
+                                    <input
+                     type="number"
+                     value={bidAmount}
+                     onChange={(e) => setBidAmount(e.target.value)}
+                     placeholder="Enter your bid per kg"
+                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                     min={Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid)}
+                     step="0.01"
+                   />
+                   <p className="text-xs text-orange-600 mt-1">
+                     Minimum bid: ₹{Math.max(parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')), currentHighestBid)}/kg
+                     {currentHighestBid > parseFloat(selectedProduct.price.replace(/[^\d.]/g, '')) && (
+                       <span className="text-red-600"> (must beat current highest bid)</span>
+                     )}
+                   </p>
                </div>
                
                <div>

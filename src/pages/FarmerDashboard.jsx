@@ -48,7 +48,8 @@ const FarmerDashboard = () => {
     harvestDate: '',
     location: '',
     certifications: [],
-    tags: []
+    tags: [],
+    auctionEndTime: '' // New field for auction end time
   });
 
   // Image handling
@@ -288,7 +289,8 @@ const FarmerDashboard = () => {
       harvestDate: '',
       location: '',
       certifications: [],
-      tags: []
+      tags: [],
+      auctionEndTime: '' // Reset auction end time
     });
     setSelectedImage(null);
     setImagePreview(null);
@@ -332,7 +334,8 @@ const FarmerDashboard = () => {
         certifications: formData.certifications,
         tags: formData.tags,
         image_url: imageUrl,
-        user_id: user.id
+        user_id: user.id,
+        auction_end_time: formData.auctionEndTime || null
       };
 
       if (editingItem) {
@@ -385,7 +388,8 @@ const FarmerDashboard = () => {
       harvestDate: item.harvest_date || '',
       location: item.location || '',
       certifications: item.certifications || [],
-      tags: item.tags || []
+      tags: item.tags || [],
+      auctionEndTime: item.auction_end_time || '' // Set auction end time for editing
     });
     setImagePreview(item.image_url);
     setShowAddForm(true);
@@ -489,6 +493,22 @@ const FarmerDashboard = () => {
     }
   };
 
+  // Function to get the highest bid for a specific produce listing
+  const getHighestBidForListing = (listingId) => {
+    const bidsForListing = receivedBids.filter(bid => 
+      bid.produce_id === listingId && bid.status === 'pending'
+    );
+    
+    if (bidsForListing.length === 0) return null;
+    
+    // Find the highest bid based on price × quantity score
+    return bidsForListing.reduce((highest, current) => {
+      const highestScore = parseFloat(highest.bid_amount) * parseFloat(highest.bid_quantity);
+      const currentScore = parseFloat(current.bid_amount) * parseFloat(current.bid_quantity);
+      return currentScore > highestScore ? current : highest;
+    });
+  };
+
   // Function to automatically replace lower bids with better ones
   const replaceLowerBids = async (newBid) => {
     try {
@@ -510,16 +530,23 @@ const FarmerDashboard = () => {
         return bidScore < newBidScore && bid.id !== newBid.id;
       });
 
-      // Update lower bids to rejected status
+      // Update lower bids to replaced status and notify distributors
       if (bidsToReplace.length > 0) {
         const bidIds = bidsToReplace.map(bid => bid.id);
         const { error: updateError } = await supabase
           .from('distributor_bids')
-          .update({ status: 'replaced' })
+          .update({ 
+            status: 'replaced',
+            replaced_at: new Date().toISOString(),
+            replaced_by_bid: newBid.id
+          })
           .in('id', bidIds);
 
         if (updateError) {
           console.warn('Could not update lower bids:', updateError);
+        } else {
+          // Notify outbid distributors (you could implement email/push notifications here)
+          console.log(`${bidsToReplace.length} distributors have been outbid`);
         }
       }
 
@@ -529,6 +556,59 @@ const FarmerDashboard = () => {
       return 0;
     }
   };
+
+  // Function to check and auto-accept winning bids when auctions end
+  const checkAndAutoAcceptAuctions = async () => {
+    try {
+      const now = new Date().toISOString();
+      
+      // Find produce listings where auction has ended and there are pending bids
+      const { data: endedAuctions, error } = await supabase
+        .from('farmer_listings')
+        .select(`
+          *,
+          distributor_bids!inner(*)
+        `)
+        .not('auction_end_time', 'is', null)
+        .lt('auction_end_time', now)
+        .eq('status', 'active');
+
+      if (error) throw error;
+
+      for (const auction of endedAuctions || []) {
+        if (auction.distributor_bids && auction.distributor_bids.length > 0) {
+          // Find the highest bid
+          const highestBid = auction.distributor_bids.reduce((highest, current) => {
+            const highestScore = parseFloat(highest.bid_amount) * parseFloat(highest.bid_quantity);
+            const currentScore = parseFloat(current.bid_amount) * parseFloat(current.bid_quantity);
+            return currentScore > highestScore ? current : highest;
+          });
+
+          // Auto-accept the highest bid
+          await handleBidAction(highestBid.id, 'accepted');
+          
+          // Mark the listing as auction ended
+          await supabase
+            .from('farmer_listings')
+            .update({ 
+              status: 'auction_ended',
+              winning_bid_id: highestBid.id
+            })
+            .eq('id', auction.id);
+
+          console.log(`Auction auto-closed for ${auction.name}, winning bid: ₹${highestBid.bid_amount}/kg x ${highestBid.bid_quantity}kg`);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking auctions:', error);
+    }
+  };
+
+  // Check auctions every minute when component is active
+  useEffect(() => {
+    const interval = setInterval(checkAndAutoAcceptAuctions, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleStatus = async (id) => {
     try {
@@ -726,15 +806,24 @@ const FarmerDashboard = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-gray-800">
-                      {myListings.length > 0 
+                      ₹{myListings.length > 0 
                         ? myListings.reduce((sum, item) => {
-                            const price = parseInt(item.price.replace(/[^\d]/g, '') || 0);
-                            return sum + price;
-                          }, 0)
-                        : 0
+                            const highestBid = getHighestBidForListing(item.id);
+                            if (highestBid) {
+                              // Use the highest bid amount × quantity
+                              return sum + (parseFloat(highestBid.bid_amount) * parseFloat(highestBid.bid_quantity));
+                            } else {
+                              // Fall back to farmer's price × available quantity
+                              const price = parseFloat(item.price.replace(/[^\d.]/g, '') || 0);
+                              const quantity = parseFloat(item.quantity.replace(/[^\d.]/g, '') || 0);
+                              return sum + (price * quantity);
+                            }
+                          }, 0).toFixed(2)
+                        : '0.00'
                       }
                     </p>
-                    <p className="text-sm text-gray-500">Total Value</p>
+                    <p className="text-sm text-gray-500">Total Value (Highest Bids)</p>
+                    <p className="text-xs text-gray-400 mt-1">Shows best offers from distributors</p>
                   </div>
                 </div>
               </div>
@@ -752,8 +841,13 @@ const FarmerDashboard = () => {
                   <span className="text-white text-xs font-bold">i</span>
                 </div>
                 <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">Automatic Bid Replacement</p>
-                  <p>When a distributor places a better bid (higher price × quantity), lower bids are automatically marked as "Replaced". This ensures you always see the best offers first.</p>
+                  <p className="font-medium mb-1">Smart Auction System</p>
+                  <ul className="space-y-1 text-xs">
+                    <li>• <strong>Auto-Accept:</strong> When you set an auction end time, the highest bid is automatically accepted</li>
+                    <li>• <strong>Bid Replacement:</strong> Better bids (higher price × quantity) automatically replace lower ones</li>
+                    <li>• <strong>Outbid Notifications:</strong> Distributors are notified when they're outbid</li>
+                    <li>• <strong>Real-time Countdown:</strong> See exactly when auctions end</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -779,6 +873,24 @@ const FarmerDashboard = () => {
                              <span className="text-emerald-600 font-medium">Bid: ₹{bid.bid_amount}/kg</span>
                              <span className="text-gray-500">Quantity: {bid.bid_quantity}kg</span>
                            </div>
+                           
+                           {/* Auction countdown for active auctions */}
+                           {bid.produce?.auction_end_time && bid.produce?.status === 'active' && (
+                             <div className="mt-1">
+                               <span className="text-xs text-orange-600">
+                                 Auction ends: <AuctionCountdown endTime={bid.produce.auction_end_time} />
+                               </span>
+                             </div>
+                           )}
+                           
+                           {/* Outbid notification */}
+                           {bid.status === 'replaced' && bid.replaced_by_bid && (
+                             <div className="mt-1">
+                               <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                                 ⚠️ Outbid by a better offer
+                               </span>
+                             </div>
+                           )}
                          </div>
                        </div>
                        
@@ -1059,6 +1171,20 @@ const FarmerDashboard = () => {
                   />
                 </div>
 
+                {/* Auction End Time */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Auction End Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.auctionEndTime}
+                    onChange={(e) => handleInputChange('auctionEndTime', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder="e.g., 2023-12-31T23:59"
+                  />
+                </div>
+
                 {/* Submit Button */}
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
@@ -1131,18 +1257,31 @@ const FarmerDashboard = () => {
                       alt={item.name}
                       className="w-full h-48 object-cover"
                     />
-                                         <div className="absolute top-3 right-3">
+                     <div className="absolute top-3 right-3">
                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                          item.status === 'active' 
                            ? 'bg-emerald-100 text-emerald-700' 
                            : item.status === 'sold_out'
                            ? 'bg-red-100 text-red-700'
+                           : item.status === 'auction_ended'
+                           ? 'bg-purple-100 text-purple-700'
                            : 'bg-gray-100 text-gray-600'
                        }`}>
                          {item.status === 'active' ? 'Active' : 
-                          item.status === 'sold_out' ? 'Sold Out' : 'Inactive'}
+                          item.status === 'sold_out' ? 'Sold Out' : 
+                          item.status === 'auction_ended' ? 'Auction Ended' :
+                          'Inactive'}
                        </span>
                      </div>
+                     
+                     {/* Auction End Time Badge */}
+                     {item.auction_end_time && item.status === 'active' && (
+                       <div className="absolute top-3 left-3">
+                         <div className="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                           <AuctionCountdown endTime={item.auction_end_time} />
+                         </div>
+                       </div>
+                     )}
                   </div>
 
                   <div className="p-4">
@@ -1177,6 +1316,22 @@ const FarmerDashboard = () => {
                         )}
                       </div>
                     )}
+
+                    {/* Highest Bid Display */}
+                    {(() => {
+                      const highestBid = getHighestBidForListing(item.id);
+                      return highestBid ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 mb-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-emerald-700 font-medium">Highest Bid:</span>
+                            <span className="text-emerald-800 font-bold">₹{highestBid.bid_amount}/kg × {highestBid.bid_quantity}kg</span>
+                          </div>
+                          <div className="text-xs text-emerald-600 mt-1">
+                            Total: ₹{(parseFloat(highestBid.bid_amount) * parseFloat(highestBid.bid_quantity)).toFixed(2)}
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
 
                     <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                       <div className="flex items-center space-x-2">
@@ -1457,6 +1612,58 @@ const EquipmentMarketplace = () => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// Auction Countdown Timer Component
+const AuctionCountdown = ({ endTime }) => {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const now = new Date().getTime();
+      const end = new Date(endTime).getTime();
+      const difference = end - now;
+
+      if (difference > 0) {
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+        if (days > 0) {
+          setTimeLeft(`${days}d ${hours}h ${minutes}m`);
+        } else if (hours > 0) {
+          setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+        } else if (minutes > 0) {
+          setTimeLeft(`${minutes}m ${seconds}s`);
+        } else {
+          setTimeLeft(`${seconds}s`);
+        }
+      } else {
+        setTimeLeft('Auction Ended');
+      }
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 1000);
+
+    return () => clearInterval(timer);
+  }, [endTime]);
+
+  const isEndingSoon = () => {
+    const now = new Date().getTime();
+    const end = new Date(endTime).getTime();
+    const difference = end - now;
+    return difference < 24 * 60 * 60 * 1000; // Less than 24 hours
+  };
+
+  return (
+    <div className={`text-xs font-medium ${
+      isEndingSoon() ? 'text-red-600' : 'text-orange-600'
+    }`}>
+      {timeLeft}
     </div>
   );
 };
