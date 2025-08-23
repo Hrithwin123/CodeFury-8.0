@@ -59,6 +59,11 @@ const FarmerDashboard = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
 
+  // Mandi price suggestion state
+  const [mandiPriceData, setMandiPriceData] = useState(null);
+  const [mandiPriceLoading, setMandiPriceLoading] = useState(false);
+  const [mandiPriceError, setMandiPriceError] = useState('');
+
   const categories = [
     'Vegetables', 'Fruits', 'Grains', 'Dairy', 'Meat', 'Herbs', 'Nuts', 'Other'
   ];
@@ -267,6 +272,24 @@ const FarmerDashboard = () => {
       ...prev,
       [field]: value
     }));
+
+    // Auto-fetch market price when both name and location are filled
+    if ((field === 'name' || field === 'location') && 
+        formData.name.trim() && 
+        formData.location.trim() && 
+        !mandiPriceLoading) {
+      // Clear any existing timeout
+      if (window.mandiPriceTimeout) {
+        clearTimeout(window.mandiPriceTimeout);
+      }
+      
+      // Add a delay to avoid too many API calls while typing
+      window.mandiPriceTimeout = setTimeout(() => {
+        if (formData.name.trim() && formData.location.trim()) {
+          getMandiPriceSuggestion();
+        }
+      }, 1000); // 1 second delay after user stops typing
+    }
   };
 
   const handleCertificationToggle = (cert) => {
@@ -286,6 +309,12 @@ const FarmerDashboard = () => {
     }));
   };
 
+  const closeForm = () => {
+    setShowAddForm(false);
+    setEditingItem(null);
+    resetForm();
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -303,6 +332,212 @@ const FarmerDashboard = () => {
     setImagePreview(null);
     setEditingItem(null);
     setError('');
+    
+    // Clear Mandi price data
+    setMandiPriceData(null);
+    setMandiPriceError('');
+  };
+
+  // Function to get Mandi price suggestion
+  const getMandiPriceSuggestion = async () => {
+    try {
+      setMandiPriceLoading(true);
+      setMandiPriceError('');
+      setMandiPriceData(null);
+
+      // Extract commodity name from form data
+      const commodity = formData.name.trim();
+      if (!commodity) {
+        setMandiPriceError('Please enter a product name first');
+        return;
+      }
+
+      // Extract location info (assuming format: "City, State" or just "City")
+      const locationParts = formData.location.trim().split(',').map(part => part.trim());
+      const city = locationParts[0];
+      const state = locationParts[1] || 'Karnataka'; // Default to Karnataka if not specified
+
+      // Map common crop names to API commodity names
+      let apiCommodity = commodity.toLowerCase();
+      
+      // Map common names to standard commodity names
+      const commodityMapping = {
+        'tomato': 'tomato',
+        'tomatoes': 'tomato',
+        'potato': 'potato',
+        'potatoes': 'potato',
+        'onion': 'onion',
+        'onions': 'onion',
+        'rice': 'rice',
+        'wheat': 'wheat',
+        'corn': 'maize',
+        'maize': 'maize',
+        'sugarcane': 'sugarcane',
+        'cotton': 'cotton',
+        'pulses': 'pulses',
+        'dal': 'pulses',
+        'lentils': 'pulses',
+        'chickpea': 'chickpea',
+        'chana': 'chickpea',
+        'milk': 'milk',
+        'dairy': 'milk',
+        'vegetables': 'vegetables',
+        'fruits': 'fruits',
+        'apple': 'apple',
+        'apples': 'apple',
+        'banana': 'banana',
+        'bananas': 'banana',
+        'mango': 'mango',
+        'mangoes': 'mango',
+        'orange': 'orange',
+        'oranges': 'orange',
+        'grapes': 'grapes',
+        'grape': 'grapes',
+        'cabbage': 'cabbage',
+        'cauliflower': 'cauliflower',
+        'carrot': 'carrot',
+        'carrots': 'carrot',
+        'cucumber': 'cucumber',
+        'cucumbers': 'cucumber',
+        'brinjal': 'brinjal',
+        'eggplant': 'brinjal',
+        'aubergine': 'brinjal',
+        'peas': 'peas',
+        'pea': 'peas',
+        'beans': 'beans',
+        'bean': 'beans',
+        'spinach': 'spinach',
+        'palak': 'spinach',
+        'lettuce': 'lettuce',
+        'coriander': 'coriander',
+        'dhania': 'coriander',
+        'mint': 'mint',
+        'pudina': 'mint',
+        'ginger': 'ginger',
+        'adrak': 'ginger',
+        'garlic': 'garlic',
+        'lehsun': 'garlic',
+        'turmeric': 'turmeric',
+        'haldi': 'turmeric',
+        'chilli': 'chilli',
+        'chillies': 'chilli',
+        'pepper': 'pepper',
+        'black pepper': 'pepper',
+        'cardamom': 'cardamom',
+        'elaichi': 'cardamom',
+        'cumin': 'cumin',
+        'jeera': 'cumin',
+        'mustard': 'mustard',
+        'sarson': 'mustard',
+        'sesame': 'sesame',
+        'til': 'sesame',
+        'sunflower': 'sunflower',
+        'soybean': 'soybean',
+        'groundnut': 'groundnut',
+        'peanut': 'groundnut',
+        'mung': 'mung',
+        'moong': 'mung',
+        'urad': 'urad',
+        'masoor': 'masoor',
+        'toor': 'toor',
+        'arhar': 'toor',
+        'pigeon pea': 'toor',
+        'cowpea': 'cowpea',
+        'lobia': 'cowpea',
+        'kidney bean': 'kidney bean',
+        'rajma': 'kidney bean',
+        'black gram': 'urad',
+        'green gram': 'mung',
+        'red gram': 'toor',
+        'bengal gram': 'chickpea',
+        'chick pea': 'chickpea',
+        'gram': 'chickpea',
+        'bajra': 'bajra',
+        'pearl millet': 'bajra',
+        'jowar': 'jowar',
+        'sorghum': 'jowar',
+        'ragi': 'ragi',
+        'finger millet': 'ragi',
+        'kodo': 'kodo',
+        'kodo millet': 'kodo',
+        'proso': 'proso',
+        'proso millet': 'proso',
+        'barnyard': 'barnyard',
+        'barnyard millet': 'barnyard',
+        'little': 'little',
+        'little millet': 'little',
+        'foxtail': 'foxtail',
+        'foxtail millet': 'foxtail',
+        'brown top': 'brown top',
+        'brown top millet': 'brown top',
+        'kodo': 'kodo',
+        'kodo millet': 'kodo',
+        'proso': 'proso',
+        'proso millet': 'proso',
+        'barnyard': 'barnyard',
+        'barnyard millet': 'barnyard',
+        'little': 'little',
+        'little millet': 'little',
+        'foxtail': 'foxtail',
+        'foxtail millet': 'foxtail',
+        'brown top': 'brown top',
+        'brown top millet': 'brown top'
+      };
+
+      // Find the best match for the commodity
+      for (const [key, value] of Object.entries(commodityMapping)) {
+        if (apiCommodity.includes(key)) {
+          apiCommodity = value;
+          break;
+        }
+      }
+
+      console.log('Calling Gemini AI API with:', { crop: apiCommodity, location: formData.location.trim() });
+      
+      // Call the new AI price suggestion endpoint
+      const response = await fetch(`http://localhost:5000/api/ai-price-suggestion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          crop: apiCommodity,
+          location: formData.location.trim()
+        })
+      });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`Failed to fetch price data: ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Gemini AI API Response:', data);
+      
+      if (data.success) {
+        setMandiPriceData(data);
+        console.log('AI price suggestion data:', data);
+        
+        // Auto-fill the price field with the AI suggestion
+        if (data.data && data.data.placeholder_text) {
+          setFormData(prev => ({
+            ...prev,
+            price: data.data.placeholder_text
+          }));
+        }
+      } else {
+        setMandiPriceError(data.message || 'Unable to get AI price suggestion for this commodity and location');
+      }
+    } catch (error) {
+      console.error('Error fetching Mandi price:', error);
+      setMandiPriceError(`Failed to fetch market price: ${error.message}. Make sure your Flask backend is running on port 5000.`);
+    } finally {
+      setMandiPriceLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -387,19 +622,31 @@ const FarmerDashboard = () => {
   const handleEdit = (item) => {
     setEditingItem(item);
     setFormData({
-      name: item.name,
-      price: item.price,
-      description: item.description,
-      category: item.category,
-      quantity: item.quantity,
+      name: item.name || '',
+      price: item.price || '',
+      description: item.description || '',
+      category: item.category || 'Vegetables',
+      quantity: item.quantity || '',
       harvestDate: item.harvest_date || '',
       location: item.location || '',
       certifications: item.certifications || [],
       tags: item.tags || [],
-      auctionEndTime: item.auction_end_time || '' // Set auction end time for editing
+      auctionEndTime: item.auction_end_time || ''
     });
-    setImagePreview(item.image_url);
+    
+    if (item.image_url) {
+      setImagePreview(item.image_url);
+    } else {
+      setImagePreview(null);
+    }
+    
+    setSelectedImage(null);
     setShowAddForm(true);
+    setError('');
+    
+    // Clear AI price suggestions when editing
+    setMandiPriceData(null);
+    setMandiPriceError('');
   };
 
   const handleDelete = async (id) => {
@@ -432,7 +679,16 @@ const FarmerDashboard = () => {
       // Get the bid details first
       const { data: bidData, error: bidError } = await supabase
         .from('distributor_bids')
-        .select('*')
+        .select(`
+          *,
+          farmer_listings:produce_id (
+            id,
+            name,
+            price,
+            quantity,
+            user_id
+          )
+        `)
         .eq('id', bidId)
         .single();
 
@@ -446,7 +702,7 @@ const FarmerDashboard = () => {
       
       if (updateError) throw updateError;
 
-      // If bid is accepted, update the produce quantity
+      // If bid is accepted, update the produce quantity and send email
       if (action === 'accepted' && bidData) {
         const { data: produceData, error: produceError } = await supabase
           .from('farmer_listings')
@@ -481,6 +737,8 @@ const FarmerDashboard = () => {
             .update({ status: 'sold_out' })
             .eq('id', bidData.produce_id);
         }
+
+
       }
       
       // Refresh bids and listings
@@ -567,63 +825,8 @@ const FarmerDashboard = () => {
     }
   };
 
-  // Function to check and auto-accept winning bids when auctions end
-  const checkAndAutoAcceptAuctions = async () => {
-    try {
-      const now = new Date().toISOString();
-      
-      // Find produce listings where auction has ended and there are pending bids
-      const { data: endedAuctions, error } = await supabase
-        .from('farmer_listings')
-        .select(`
-          *,
-          distributor_bids!farmer_listings_id(*)
-        `)
-        .not('auction_end_time', 'is', null)
-        .lt('auction_end_time', now)
-        .eq('status', 'active');
-
-      if (error) throw error;
-
-      for (const auction of endedAuctions || []) {
-        if (auction.distributor_bids && auction.distributor_bids.length > 0) {
-          // Filter out replaced bids and only consider active ones
-          const activeBids = auction.distributor_bids.filter(bid => bid.status === 'pending');
-          
-          if (activeBids.length > 0) {
-            // Find the highest bid
-            const highestBid = activeBids.reduce((highest, current) => {
-              const highestScore = parseFloat(highest.bid_amount) * parseFloat(highest.bid_quantity);
-              const currentScore = parseFloat(current.bid_amount) * parseFloat(current.bid_quantity);
-              return currentScore > highestScore ? current : highest;
-            });
-
-            // Auto-accept the highest bid
-            await handleBidAction(highestBid.id, 'accepted');
-            
-            // Mark the listing as auction ended
-            await supabase
-              .from('farmer_listings')
-              .update({ 
-                status: 'auction_ended',
-                winning_bid_id: highestBid.id
-              })
-              .eq('id', auction.id);
-
-            console.log(`Auction auto-closed for ${auction.name}, winning bid: ₹${highestBid.bid_amount}/kg x ${highestBid.bid_quantity}kg`);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error checking auctions:', error);
-    }
-  };
-
-  // Check auctions every minute when component is active
-  useEffect(() => {
-    const interval = setInterval(checkAndAutoAcceptAuctions, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, []);
+  // Note: Auction auto-checking temporarily disabled due to database relationship issues
+  // Will be re-enabled once proper foreign key relationships are established
 
   const toggleStatus = async (id) => {
     try {
@@ -1000,10 +1203,7 @@ const FarmerDashboard = () => {
                     {editingItem ? 'Edit Listing' : 'Add New Listing'}
                   </h2>
                   <button
-                    onClick={() => {
-                      setShowAddForm(false);
-                      resetForm();
-                    }}
+                    onClick={closeForm}
                     className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
                   >
                     <X className="w-5 h-5 text-gray-600" />
@@ -1012,6 +1212,24 @@ const FarmerDashboard = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                {/* Price Suggestion Info */}
+                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                   <div className="flex items-start space-x-3">
+                     <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                       </svg>
+                     </div>
+                     <div className="text-sm text-blue-800">
+                       <p className="font-medium mb-1">🤖 AI-Powered Price Suggestion</p>
+                       <p className="text-blue-700">
+                         AI price suggestions are automatically generated using Gemini AI 1 second after you stop typing in both product name and location. 
+                         You can also manually click "Get AI Price Suggestion" if needed. This helps you set competitive prices based on AI market analysis.
+                       </p>
+                     </div>
+                   </div>
+                 </div>
+
                 {/* Image Upload */}
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-gray-700">
@@ -1085,14 +1303,101 @@ const FarmerDashboard = () => {
                     <label className="block text-sm font-medium text-gray-700">
                       Price *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.price}
-                      onChange={(e) => handleInputChange('price', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder="e.g., ₹45/kg"
-                    />
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        required
+                        value={formData.price}
+                        onChange={(e) => handleInputChange('price', e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                        placeholder={
+                          mandiPriceData?.data?.placeholder_text || 
+                          "e.g., ₹45/kg"
+                        }
+                      />
+                      
+                      {/* Auto-fetching AI Price Suggestion */}
+                      {mandiPriceLoading && (
+                        <div className="flex items-center space-x-1 text-xs text-blue-600">
+                          <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span>Getting AI price suggestion...</span>
+                        </div>
+                      )}
+                      
+                      {/* Manual Get AI Price Button */}
+                      {!mandiPriceLoading && !mandiPriceData && (
+                        <button
+                          type="button"
+                          onClick={() => getMandiPriceSuggestion()}
+                          disabled={!formData.name || !formData.location}
+                          className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Get AI Price Suggestion
+                        </button>
+                      )}
+                      
+                      {/* Refresh AI Price Button */}
+                      {!mandiPriceLoading && mandiPriceData && (
+                        <button
+                          type="button"
+                          onClick={() => getMandiPriceSuggestion()}
+                          className="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-lg font-medium transition-colors flex items-center space-x-1"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Refresh AI Price
+                        </button>
+                      )}
+                      
+                      {/* AI Price Suggestion Display */}
+                      {mandiPriceData && mandiPriceData.success && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <div className="flex items-start space-x-2">
+                            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-blue-800 mb-1">
+                                🤖 AI Price Suggestion
+                              </p>
+                              <div className="text-xs text-blue-700 space-y-1">
+                                <p><strong>Suggested Price:</strong> ₹{mandiPriceData.data.suggested_price}/kg</p>
+                                <p><strong>Price Range:</strong> ₹{mandiPriceData.data.min_price} - ₹{mandiPriceData.data.max_price}/kg</p>
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-blue-200">
+                                <p className="text-xs text-blue-700 mb-2">
+                                  💡 <strong>AI Suggested:</strong> Set your price between ₹{mandiPriceData.data.min_price} - ₹{mandiPriceData.data.max_price}/kg for competitive pricing
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, price: `₹${mandiPriceData.data.suggested_price}/kg` }));
+                                    // Hide the AI suggestion after use
+                                    setMandiPriceData(null);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors"
+                                >
+                                  Use AI Suggested Price (₹{mandiPriceData.data.suggested_price}/kg)
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Error Display */}
+                      {mandiPriceError && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+                          <p className="text-xs text-red-700">{mandiPriceError}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -1146,8 +1451,11 @@ const FarmerDashboard = () => {
                       value={formData.location}
                       onChange={(e) => handleInputChange('location', e.target.value)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      placeholder="e.g., Pune, Maharashtra"
+                      placeholder="e.g., Bangalore, Karnataka"
                     />
+                    <p className="text-xs text-gray-500">
+                      💡 Format: "City, State" (e.g., "Bangalore, Karnataka") for accurate market price suggestions
+                    </p>
                   </div>
                 </div>
 

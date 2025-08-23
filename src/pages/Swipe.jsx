@@ -32,6 +32,7 @@ const Swipe = () => {
   const [loading, setLoading] = useState(true);
   const [produceData, setProduceData] = useState([]);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [seenItems, setSeenItems] = useState(new Set()); // Track seen items
   
 
 
@@ -90,6 +91,11 @@ const Swipe = () => {
         });
         
         setLikedItems(transformedLikedItems);
+        
+        // Mark liked items as seen
+        const likedIds = new Set(transformedLikedItems.map(item => item.id));
+        setSeenItems(prev => new Set([...prev, ...likedIds]));
+        
         console.log('Loaded liked items from database:', transformedLikedItems);
       }
     } catch (error) {
@@ -109,6 +115,14 @@ const Swipe = () => {
           const role = user.user_metadata?.user_role || 'distributor';
           console.log('User role:', role);
           setUserRole(role);
+          
+          // Load passed items from localStorage to maintain memory
+          const passedItemsData = localStorage.getItem(`passedItems_${user.id}`);
+          if (passedItemsData) {
+            const passedIds = JSON.parse(passedItemsData);
+            setSeenItems(prev => new Set([...prev, ...passedIds]));
+            console.log('Loaded passed items from localStorage:', passedIds);
+          }
           
           // Fetch produce data from database
           await fetchProduceData();
@@ -254,11 +268,20 @@ const Swipe = () => {
   const categories = ['all', 'Vegetables', 'Grains', 'Leafy Greens', 'Root Vegetables', 'Herbs'];
 
   const filteredData = useMemo(() => {
-    if (filterCategory === 'all') return produceData;
-    return produceData.filter(item => 
-      item.category?.toLowerCase().includes(filterCategory.toLowerCase())
-    );
-  }, [filterCategory, produceData]);
+    let filtered = produceData;
+    
+    // Filter by category
+    if (filterCategory !== 'all') {
+      filtered = filtered.filter(item => 
+        item.category?.toLowerCase().includes(filterCategory.toLowerCase())
+      );
+    }
+    
+    // Filter out seen items (liked or passed)
+    filtered = filtered.filter(item => !seenItems.has(item.id));
+    
+    return filtered;
+  }, [filterCategory, produceData, seenItems]);
 
   useEffect(() => {
     x.set(0);
@@ -312,9 +335,19 @@ const Swipe = () => {
         saveLikedItem(currentItem);
       } else {
         setPassedItems(prev => [...prev, currentItem]);
+        // Save passed items to localStorage to maintain memory
+        if (user) {
+          const passedItemsData = localStorage.getItem(`passedItems_${user.id}`) || '[]';
+          const passedIds = JSON.parse(passedItemsData);
+          passedIds.push(currentItem.id);
+          localStorage.setItem(`passedItems_${user.id}`, JSON.stringify(passedIds));
+        }
       }
 
-      setCurrentIndex(prev => (prev + 1) % filteredData.length);
+      // Mark item as seen
+      setSeenItems(prev => new Set([...prev, currentItem.id]));
+
+      setCurrentIndex(prev => prev + 1);
       setSwipeDirection(null);
       setIsAnimating(false);
       controls.set({ x: 0, y: 0, rotate: 0, opacity: 1 });
@@ -352,9 +385,19 @@ const Swipe = () => {
       saveLikedItem(currentItem);
     } else {
       setPassedItems(prev => [...prev, currentItem]);
+      // Save passed items to localStorage to maintain memory
+      if (user) {
+        const passedItemsData = localStorage.getItem(`passedItems_${user.id}`) || '[]';
+        const passedIds = JSON.parse(passedItemsData);
+        passedIds.push(currentItem.id);
+        localStorage.setItem(`passedItems_${user.id}`, JSON.stringify(passedIds));
+      }
     }
 
-    setCurrentIndex(prev => (prev + 1) % filteredData.length);
+    // Mark item as seen
+    setSeenItems(prev => new Set([...prev, currentItem.id]));
+
+    setCurrentIndex(prev => prev + 1);
     setSwipeDirection(null);
     setIsAnimating(false);
     controls.set({ x: 0, y: 0, rotate: 0, opacity: 1 });
@@ -381,8 +424,14 @@ const Swipe = () => {
       }
     }
     
+    // Clear localStorage
+    if (user) {
+      localStorage.removeItem(`passedItems_${user.id}`);
+    }
+    
     setLikedItems([]);
     setPassedItems([]);
+    setSeenItems(new Set()); // Clear seen items
     setIsAnimating(false);
   }, [user, likedItems]);
 
@@ -441,6 +490,52 @@ const Swipe = () => {
     );
   }
 
+  // Show message when all items have been seen
+  if (filteredData.length === 0 || currentIndex >= filteredData.length) {
+    return (
+      <div className="h-screen bg-emerald-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-6">
+          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Leaf className="w-10 h-10 text-emerald-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">
+            {filteredData.length === 0 && filterCategory !== 'all' 
+              ? `No ${filterCategory} Available` 
+              : "You've Seen All Items!"}
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {filteredData.length === 0 && filterCategory !== 'all'
+              ? `There are no ${filterCategory.toLowerCase()} items available in this category. Try switching to "All" or check back later.`
+              : "You've swiped through all available produce items. Check back later for new listings or reset to see them again."}
+          </p>
+          <div className="space-y-3">
+            {filteredData.length === 0 && filterCategory !== 'all' ? (
+              <button
+                onClick={() => setFilterCategory('all')}
+                className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-emerald-700 transition-colors"
+              >
+                View All Categories
+              </button>
+            ) : (
+              <button
+                onClick={resetAndGoBack}
+                className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-emerald-700 transition-colors"
+              >
+                Reset & Start Over
+              </button>
+            )}
+            <button
+              onClick={() => setShowMatches(true)}
+              className="block w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+            >
+              View Saved Items ({likedItems.length})
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <style>{styles}</style>
@@ -477,7 +572,7 @@ const Swipe = () => {
                    )}
                  </button>
                 <span className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-full">
-                  {currentIndex + 1} / {filteredData.length}
+                  {currentIndex + 1} / {filteredData.length} • {filteredData.length - currentIndex} left
                 </span>
                 <button
                   onClick={async () => {
@@ -512,6 +607,22 @@ const Swipe = () => {
                   </button>
                 ))}
               </div>
+              
+              {/* Progress Bar */}
+              {filteredData.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                    <span>Progress</span>
+                    <span>{Math.round(((currentIndex + 1) / filteredData.length) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${((currentIndex + 1) / filteredData.length) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
