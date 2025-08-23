@@ -21,9 +21,11 @@ import {
   Gavel,
   Wrench,
   Shield,
-  CheckCircle
+  CheckCircle,
+  CreditCard
 } from 'lucide-react';
 import { supabase, getStorageBucket } from '../../supabaseClient.js';
+import DashboardPaymentSettings from '../components/DashboardPaymentSettings';
 
 const FarmerDashboard = () => {
   const [user, setUser] = useState(null);
@@ -35,7 +37,7 @@ const FarmerDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('listings'); // 'listings', 'bids', or 'equipment'
+  const [activeTab, setActiveTab] = useState('listings'); // 'listings', 'bids', 'equipment', or 'payments'
   const [receivedBids, setReceivedBids] = useState([]);
 
   // Form state
@@ -99,61 +101,66 @@ const FarmerDashboard = () => {
     try {
       if (!user?.id) return;
       
-      // First, get all bids
+      // Get bids on this farmer's produce from the distributor_bids table
+      // Only show active bids (pending, accepted, rejected) - exclude replaced bids
       const { data: bidsData, error: bidsError } = await supabase
         .from('distributor_bids')
-        .select('*')
+        .select(`
+          *,
+          farmer_listings:produce_id (
+            id,
+            name,
+            price,
+            quantity
+          )
+        `)
+        .not('status', 'eq', 'replaced') // Exclude replaced bids
         .order('created_at', { ascending: false });
 
       if (bidsError) throw bidsError;
 
-      // Then, get the produce details for these bids
       if (bidsData && bidsData.length > 0) {
-        const produceIds = [...new Set(bidsData.map(bid => bid.produce_id))];
-        
-        const { data: produceData, error: produceError } = await supabase
-          .from('farmer_listings')
-          .select('*')
-          .in('id', produceIds)
-          .eq('user_id', user.id);
-
-        if (produceError) throw produceError;
-
         // Filter bids to only show those on this farmer's produce
         const farmerBids = bidsData.filter(bid => 
-          produceData.some(produce => produce.id === bid.produce_id)
+          bid.farmer_listings && bid.farmer_listings.id
         );
 
-        // Get distributor emails for these bids
+        // Get distributor information for these bids
         const distributorIds = [...new Set(farmerBids.map(bid => bid.distributor_id))];
         
-        // Get user emails from auth.users
-        const { data: userData, error: userError } = await supabase
-          .from('auth.users')
-          .select('id, email')
+        // Get distributor information from distributors table
+        const { data: distributorData, error: distributorError } = await supabase
+          .from('distributors')
+          .select('id, company_name, email')
           .in('id', distributorIds);
 
-        if (userError) {
-          console.warn('Could not fetch distributor emails:', userError);
+        if (distributorError) {
+          console.warn('Could not fetch distributor information:', distributorError);
         }
 
-        // Create a map of user ID to email
-        const userEmailMap = {};
-        if (userData) {
-          userData.forEach(user => {
-            userEmailMap[user.id] = user.email;
+        // Create a map of distributor ID to distributor info
+        const distributorMap = {};
+        if (distributorData) {
+          distributorData.forEach(distributor => {
+            distributorMap[distributor.id] = {
+              email: distributor.email || 'No email',
+              company_name: distributor.company_name || 'Unknown Company'
+            };
           });
         }
 
-        // Enrich bids with produce details and distributor emails
+        // Enrich bids with produce details and distributor information
         const enrichedBids = farmerBids.map(bid => {
-          const produce = produceData.find(p => p.id === bid.produce_id);
-          const distributorEmail = userEmailMap[bid.distributor_id] || 'Unknown';
+          const produce = bid.farmer_listings || {};
+          const distributorInfo = distributorMap[bid.distributor_id] || { 
+            email: 'Unknown', 
+            company_name: 'Unknown Company' 
+          };
           
           return {
             ...bid,
-            produce: produce || {},
-            distributor: { email: distributorEmail }
+            produce: produce,
+            distributor: distributorInfo
           };
         });
 
@@ -530,25 +537,28 @@ const FarmerDashboard = () => {
         return bidScore < newBidScore && bid.id !== newBid.id;
       });
 
-      // Update lower bids to replaced status and notify distributors
-      if (bidsToReplace.length > 0) {
-        const bidIds = bidsToReplace.map(bid => bid.id);
-        const { error: updateError } = await supabase
-          .from('distributor_bids')
-          .update({ 
-            status: 'replaced',
-            replaced_at: new Date().toISOString(),
-            replaced_by_bid: newBid.id
-          })
-          .in('id', bidIds);
+              // Update lower bids to replaced status and notify distributors
+        if (bidsToReplace.length > 0) {
+          const bidIds = bidsToReplace.map(bid => bid.id);
+          const { error: updateError } = await supabase
+            .from('distributor_bids')
+            .update({ 
+              status: 'replaced',
+              replaced_at: new Date().toISOString(),
+              replaced_by_bid: newBid.id
+            })
+            .in('id', bidIds);
 
-        if (updateError) {
-          console.warn('Could not update lower bids:', updateError);
-        } else {
-          // Notify outbid distributors (you could implement email/push notifications here)
-          console.log(`${bidsToReplace.length} distributors have been outbid`);
+          if (updateError) {
+            console.warn('Could not update lower bids:', updateError);
+          } else {
+            // Notify outbid distributors (you could implement email/push notifications here)
+            console.log(`${bidsToReplace.length} distributors have been outbid`);
+            
+            // Refresh the bids display to show only the latest bids
+            await fetchReceivedBids();
+          }
         }
-      }
 
       return bidsToReplace.length;
     } catch (error) {
@@ -567,7 +577,7 @@ const FarmerDashboard = () => {
         .from('farmer_listings')
         .select(`
           *,
-          distributor_bids!inner(*)
+          distributor_bids!farmer_listings_id(*)
         `)
         .not('auction_end_time', 'is', null)
         .lt('auction_end_time', now)
@@ -577,26 +587,31 @@ const FarmerDashboard = () => {
 
       for (const auction of endedAuctions || []) {
         if (auction.distributor_bids && auction.distributor_bids.length > 0) {
-          // Find the highest bid
-          const highestBid = auction.distributor_bids.reduce((highest, current) => {
-            const highestScore = parseFloat(highest.bid_amount) * parseFloat(highest.bid_quantity);
-            const currentScore = parseFloat(current.bid_amount) * parseFloat(current.bid_quantity);
-            return currentScore > highestScore ? current : highest;
-          });
-
-          // Auto-accept the highest bid
-          await handleBidAction(highestBid.id, 'accepted');
+          // Filter out replaced bids and only consider active ones
+          const activeBids = auction.distributor_bids.filter(bid => bid.status === 'pending');
           
-          // Mark the listing as auction ended
-          await supabase
-            .from('farmer_listings')
-            .update({ 
-              status: 'auction_ended',
-              winning_bid_id: highestBid.id
-            })
-            .eq('id', auction.id);
+          if (activeBids.length > 0) {
+            // Find the highest bid
+            const highestBid = activeBids.reduce((highest, current) => {
+              const highestScore = parseFloat(highest.bid_amount) * parseFloat(highest.bid_quantity);
+              const currentScore = parseFloat(current.bid_amount) * parseFloat(current.bid_quantity);
+              return currentScore > highestScore ? current : highest;
+            });
 
-          console.log(`Auction auto-closed for ${auction.name}, winning bid: ₹${highestBid.bid_amount}/kg x ${highestBid.bid_quantity}kg`);
+            // Auto-accept the highest bid
+            await handleBidAction(highestBid.id, 'accepted');
+            
+            // Mark the listing as auction ended
+            await supabase
+              .from('farmer_listings')
+              .update({ 
+                status: 'auction_ended',
+                winning_bid_id: highestBid.id
+              })
+              .eq('id', auction.id);
+
+            console.log(`Auction auto-closed for ${auction.name}, winning bid: ₹${highestBid.bid_amount}/kg x ${highestBid.bid_quantity}kg`);
+          }
         }
       }
     } catch (error) {
@@ -752,6 +767,19 @@ const FarmerDashboard = () => {
               <span>Equipment Marketplace</span>
             </div>
           </button>
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'payments'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <CreditCard className="w-4 h-4" />
+              <span>Payment Settings</span>
+            </div>
+          </button>
         </div>
 
         {activeTab === 'listings' && (
@@ -883,14 +911,7 @@ const FarmerDashboard = () => {
                              </div>
                            )}
                            
-                           {/* Outbid notification */}
-                           {bid.status === 'replaced' && bid.replaced_by_bid && (
-                             <div className="mt-1">
-                               <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-                                 ⚠️ Outbid by a better offer
-                               </span>
-                             </div>
-                           )}
+                           
                          </div>
                        </div>
                        
@@ -950,6 +971,17 @@ const FarmerDashboard = () => {
             </div>
             
             <EquipmentMarketplace />
+          </div>
+        )}
+
+        {activeTab === 'payments' && (
+          <div className="bg-white rounded-3xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Payment Settings</h2>
+              <span className="text-sm text-gray-500">Configure your Razorpay account to receive payments</span>
+            </div>
+            
+            <DashboardPaymentSettings user={user} />
           </div>
         )}
 

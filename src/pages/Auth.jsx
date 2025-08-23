@@ -42,10 +42,33 @@ const Auth = () => {
           
           // Get user role and redirect accordingly
           const role = data.user.user_metadata?.user_role || 'distributor';
-          if (role === 'farmer') {
-            window.location.href = '/farmer-dashboard';
-          } else if (role === 'distributor') {
+          
+          // Auto-create profile based on role
+          if (role === 'distributor') {
+            try {
+              // Create basic distributor profile
+              const { error: profileError } = await supabase
+                .from('distributors')
+                .insert({
+                  user_id: data.user.id,
+                  company_name: email.split('@')[0] + ' Company',
+                  contact_person: email.split('@')[0],
+                  email: email,
+                  is_active: true
+                });
+              
+              if (profileError) {
+                console.error('Profile creation error:', profileError);
+                // Continue anyway - user can complete profile later
+              }
+            } catch (profileError) {
+              console.error('Profile creation failed:', profileError);
+              // Continue anyway - user can complete profile later
+            }
+            
             window.location.href = '/distributor-dashboard';
+          } else if (role === 'farmer') {
+            window.location.href = '/farmer-dashboard';
           } else if (role === 'equipment_seller') {
             window.location.href = '/equipment-seller-dashboard';
           } else {
@@ -68,8 +91,39 @@ const Auth = () => {
           
           // Get user role and redirect accordingly
           const role = data.user.user_metadata?.user_role || 'distributor';
+          
           if (role === 'farmer') {
             window.location.href = '/farmer-dashboard';
+          } else if (role === 'distributor') {
+            // Check if distributor profile exists, create if not
+            try {
+              const { data: existingProfile, error: profileError } = await supabase
+                .from('distributors')
+                .select('id')
+                .eq('user_id', data.user.id)
+                .single();
+              
+              if (profileError && profileError.code === 'PGRST116') {
+                // No profile found, create one
+                const { error: createError } = await supabase
+                  .from('distributors')
+                  .insert({
+                    user_id: data.user.id,
+                    company_name: email.split('@')[0] + ' Company',
+                    contact_person: email.split('@')[0],
+                    email: email,
+                    is_active: true
+                  });
+                
+                if (createError) {
+                  console.error('Profile creation error:', createError);
+                }
+              }
+            } catch (profileError) {
+              console.error('Profile check failed:', profileError);
+            }
+            
+            window.location.href = '/distributor-dashboard';
           } else if (role === 'equipment_seller') {
             window.location.href = '/equipment-seller-dashboard';
           } else {

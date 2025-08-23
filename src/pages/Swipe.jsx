@@ -46,41 +46,6 @@ const Swipe = () => {
   const nopeOpacity = useTransform(x, [-75, -10], [1, 0]);
   const scale = useTransform(x, [-150, 0, 150], [0.98, 1, 0.98]);
 
-  // Check user authentication and role on component mount
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        console.log('Checking user authentication...');
-        const { data: { user } } = await supabase.auth.getUser();
-        console.log('User data:', user);
-        if (user) {
-          setUser(user);
-          const role = user.user_metadata?.user_role || 'distributor';
-          console.log('User role:', role);
-          setUserRole(role);
-          
-          // Fetch produce data from database
-          await fetchProduceData();
-          // Load liked items from database
-          await loadLikedItems();
-        } else {
-          console.log('No user found, but continuing for testing');
-          setUserRole('distributor'); // Set default role for testing
-          await fetchProduceData();
-        }
-      } catch (error) {
-        console.error('Error checking user:', error);
-        // Continue with sample data even if auth fails
-        setUserRole('distributor');
-        await fetchProduceData();
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkUser();
-  }, []);
-
   // Load liked items from database
   const loadLikedItems = async () => {
     if (!user) return;
@@ -131,6 +96,41 @@ const Swipe = () => {
       console.error('Error loading liked items:', error);
     }
   };
+
+  // Check user authentication and role on component mount
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        console.log('Checking user authentication...');
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log('User data:', user);
+        if (user) {
+          setUser(user);
+          const role = user.user_metadata?.user_role || 'distributor';
+          console.log('User role:', role);
+          setUserRole(role);
+          
+          // Fetch produce data from database
+          await fetchProduceData();
+          // Load liked items from database
+          await loadLikedItems();
+        } else {
+          console.log('No user found, but continuing for testing');
+          setUserRole('distributor'); // Set default role for testing
+          await fetchProduceData();
+        }
+      } catch (error) {
+        console.error('Error checking user:', error);
+        // Continue with sample data even if auth fails
+        setUserRole('distributor');
+        await fetchProduceData();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUser();
+    }, []);
 
   // Save liked item to database
   const saveLikedItem = async (item) => {
@@ -406,19 +406,20 @@ const Swipe = () => {
   }
 
   if (showMatches) {
-            return <MatchesView 
-          likedItems={likedItems} 
-          userRole={userRole} 
-          user={user} 
-          onBack={() => {
-            setShowMatches(false);
-            // Refresh liked items when going back to swiping
-            loadLikedItems();
-          }} 
-          onReset={resetAndGoBack}
-          onRemoveItem={removeLikedItem}
-        />;
-  }
+  return <MatchesView 
+    likedItems={likedItems} 
+    userRole={userRole} 
+    user={user} 
+    onBack={() => {
+      setShowMatches(false);
+      // Refresh liked items when going back to swiping
+      loadLikedItems();
+    }} 
+    onReset={resetAndGoBack}
+    onRemoveItem={removeLikedItem}
+    loadLikedItems={loadLikedItems}
+  />;
+}
 
   // Show empty state if no produce data
   if (produceData.length === 0) {
@@ -655,10 +656,10 @@ const EnhancedCardContent = React.memo(({ card, userRole }) => (
                 </div>
               </div>
             </div>
-                         <div className="text-right">
-               <p className="text-3xl font-bold text-emerald-300">{card.price}</p>
-               <p className="text-xs opacity-75">Available: {card.quantity}</p>
-             </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-emerald-300">{card.price}</p>
+              <p className="text-xs opacity-75">Available: {card.quantity}</p>
+            </div>
           </div>
           <div className="flex items-center space-x-2 text-sm opacity-90">
             <MapPin className="w-4 h-4" />
@@ -695,7 +696,7 @@ const EnhancedCardContent = React.memo(({ card, userRole }) => (
   </>
 ));
 
-const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem }) => {
+const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem, loadLikedItems }) => {
   const [showBidModal, setShowBidModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
@@ -704,6 +705,86 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [currentHighestBid, setCurrentHighestBid] = useState(0);
+  
+  // Razorpay integration states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingBidData, setPendingBidData] = useState(null);
+  const [farmerRazorpayKey, setFarmerRazorpayKey] = useState('');
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+
+  // Function to fetch farmer's Razorpay configuration
+  const fetchFarmerPaymentConfig = async (produceId) => {
+          console.log('fetchFarmerPaymentConfig STARTED');
+      console.log('produceId parameter:', produceId);
+      console.log('produceId type:', typeof produceId);
+    
+    try {
+      console.log('Fetching payment config for produce:', produceId);
+      
+      // Get the produce farmer's Razorpay key
+      const { data: produce, error: produceError } = await supabase
+        .from('farmer_listings')
+        .select('user_id, name')
+        .eq('id', produceId)
+        .single();
+
+      console.log('Supabase query result - data:', produce);
+      console.log('Supabase query result - error:', produceError);
+
+      if (produceError) {
+        console.log('Produce query error:', produceError);
+        throw produceError;
+      }
+      
+      console.log('Produce data:', produce);
+      console.log('Farmer user_id:', produce.user_id);
+      console.log('Produce name:', produce.name);
+      console.log('Expected seller_id for payment config:', 'a1dc1878-ddf3-42e8-bead-c43cd70f1fd3');
+      console.log('Are they equal?', produce.user_id === 'a1dc1878-ddf3-42e8-bead-c43cd70f1fd3');
+
+      const { data: paymentConfig, error: configError } = await supabase
+        .from('payment_configurations')
+        .select('razorpay_key_id, seller_id')
+        .eq('seller_id', produce.user_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      console.log('Payment config query - data:', paymentConfig);
+      console.log('Payment config query - error:', configError);
+
+      if (configError) {
+        console.log('Payment config query error:', configError);
+        throw configError;
+      }
+      
+      console.log('Payment config query result:', paymentConfig);
+      console.log('Razorpay key found:', paymentConfig?.razorpay_key_id);
+      console.log('Payment config seller_id:', paymentConfig?.seller_id);
+
+      // Check if payment config exists
+      if (!paymentConfig) {
+              console.log('No payment config found for farmer:', produce.user_id);
+      console.log('This means the farmer needs to configure Razorpay settings');
+        setMessage('Farmer has not configured payment settings. Please contact them.');
+        setMessageType('error');
+        return null;
+      }
+
+      console.log('Payment config found successfully!');
+      setFarmerRazorpayKey(paymentConfig.razorpay_key_id);
+      return paymentConfig.razorpay_key_id;
+    } catch (error) {
+      console.error('Error in fetchFarmerPaymentConfig:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
+      setMessage('Farmer has not configured payment settings. Please contact them.');
+      setMessageType('error');
+      return null;
+    }
+  };
 
   // Function to get current highest bid for a product
   const getCurrentHighestBid = async (produceId) => {
@@ -726,16 +807,147 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
       console.error('Error fetching highest bid:', error);
       return 0;
     }
+    };
+  
+  // Razorpay payment functions
+  const handlePaymentSuccess = async (response) => {
+    try {
+      setPaymentProcessing(true);
+      
+      // Process the bid after successful payment
+      console.log('Sending to Edge Function:', {
+        produce_id: pendingBidData.produce_id,
+        bid_amount: pendingBidData.bid_amount,
+        bid_quantity: pendingBidData.bid_quantity,
+        card_token: response.razorpay_payment_id,
+        distributor_id: pendingBidData.distributor_id
+      });
+      
+      const { data, error } = await supabase.functions.invoke('process-produce-bid', {
+        body: {
+          produce_id: pendingBidData.produce_id,
+          bid_amount: pendingBidData.bid_amount,
+          bid_quantity: pendingBidData.bid_quantity,
+          card_token: response.razorpay_payment_id,
+          distributor_id: pendingBidData.distributor_id
+        }
+      });
+      
+             // Log the full response to see what's happening
+       console.log('Full Edge Function response:', { data, error });
+       console.log('Data type:', typeof data);
+       console.log('Data keys:', data ? Object.keys(data) : 'No data');
+       console.log('Data.success value:', data?.success);
+       
+       if (error) {
+         console.log('Error details:', error);
+         console.log('Error message:', error.message);
+         console.log('Error context:', error.context);
+       }
+
+       console.log('Edge Function response:', { data, error });
+       
+       if (error) throw error;
+
+             // Check if the response indicates success (either data.success or no error)
+       if (data && (data.success || !error)) {
+         setMessage('Bid placed successfully! Your card details have been securely stored.');
+         setMessageType('success');
+         setShowPaymentModal(false);
+         setPendingBidData(null);
+         setBidAmount('');
+         setBidQuantity('');
+         setSelectedProduct(null);
+         
+                 // Refresh the liked items to show updated bid counts
+        if (loadLikedItems) {
+          await loadLikedItems();
+        }
+       } else {
+         setMessage(data?.error || 'Failed to place bid');
+         setMessageType('error');
+       }
+    } catch (error) {
+      setMessage('Failed to process bid. Please try again.');
+      setMessageType('error');
+      console.error('Bid processing error:', error);
+    } finally {
+      setPaymentProcessing(false);
+    }
   };
 
+  const handlePaymentFailure = (error) => {
+    setMessage('Payment failed. Please try again with a different card.');
+    setMessageType('error');
+    setShowPaymentModal(false);
+    console.error('Payment error:', error);
+  };
+
+  const openRazorpayPayment = () => {
+    if (!farmerRazorpayKey) {
+      setMessage('Payment gateway not configured');
+      setMessageType('error');
+      return;
+    }
+
+    const options = {
+      key: farmerRazorpayKey,
+      amount: Math.round(pendingBidData.bid_amount * pendingBidData.bid_quantity * 100), // Convert total to paise
+      currency: 'INR',
+      name: 'Agriculture Produce Auction',
+      description: `Bid for ${selectedProduct.name} - ₹${pendingBidData.bid_amount}/kg x ${pendingBidData.bid_quantity}kg = ₹${(pendingBidData.bid_amount * pendingBidData.bid_quantity).toFixed(2)}`,
+      handler: handlePaymentSuccess,
+      modal: {
+        ondismiss: () => {
+          setShowPaymentModal(false);
+        }
+      },
+      prefill: {
+        name: user?.user_metadata?.full_name || '',
+        email: user?.email || '',
+        contact: ''
+      },
+      theme: {
+        color: '#10B981'
+      },
+      notes: {
+        "Bid Amount": `₹${pendingBidData.bid_amount}/kg`,
+        "Quantity": `${pendingBidData.bid_quantity}kg`,
+        "Produce": selectedProduct.name
+      }
+    };
+
+    try {
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', handlePaymentFailure);
+      rzp.open();
+    } catch (error) {
+      setMessage('Failed to initialize payment. Please try again.');
+      setMessageType('error');
+      console.error('Payment initialization error:', error);
+    }
+  };
+  
   const handleBidSubmit = async () => {
-    if (!selectedProduct || !bidAmount || !bidQuantity) return;
+    console.log('handleBidSubmit called');
+    console.log('selectedProduct:', selectedProduct);
+    console.log('bidAmount:', bidAmount);
+    console.log('bidQuantity:', bidQuantity);
+    
+    if (!selectedProduct || !bidAmount || !bidQuantity) {
+      console.log('Missing required fields');
+      return;
+    }
     
     // Validate bid quantity against available quantity
     const availableQuantity = parseFloat(selectedProduct.quantity.replace(/[^\d.]/g, ''));
     const bidQuantityNum = parseFloat(bidQuantity);
     
+          console.log('Available quantity:', availableQuantity);
+      console.log('Bid quantity:', bidQuantityNum);
+    
     if (bidQuantityNum > availableQuantity) {
+      console.log('Bid quantity exceeds available quantity');
       setMessage(`Cannot bid for ${bidQuantityNum}kg when only ${availableQuantity}kg is available.`);
       setMessageType('error');
       return;
@@ -745,11 +957,18 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
     const farmerPrice = parseFloat(selectedProduct.price.replace(/[^\d.]/g, ''));
     const bidPrice = parseFloat(bidAmount);
     
+          console.log('Farmer price:', farmerPrice);
+      console.log('Bid price:', bidPrice);
+      console.log('Current highest bid:', currentHighestBid);
+    
     // Determine minimum bid: either farmer's price or current highest bid, whichever is higher
     const minBid = Math.max(farmerPrice, currentHighestBid);
     
+          console.log('Minimum bid required:', minBid);
+    
     // Check if bid is below minimum required bid
     if (bidPrice < minBid) {
+      console.log('Bid below minimum required');
       if (currentHighestBid > farmerPrice) {
         setMessage(`Bid must be at least ₹${minBid}/kg (current highest bid)`);
       } else {
@@ -759,118 +978,30 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
       return;
     }
     
-    setBidding(true);
-    try {
-      // Create bid record
-      console.log('Creating bid with data:', {
-        distributor_id: user?.id,
-        produce_id: selectedProduct.id,
-        bid_amount: parseFloat(bidAmount),
-        bid_quantity: parseFloat(bidQuantity),
-        status: 'pending'
-      });
-      
-      const { data, error } = await supabase
-        .from('distributor_bids')
-        .insert({
-          distributor_id: user?.id,
-          produce_id: selectedProduct.id,
-          bid_amount: parseFloat(bidAmount),
-          bid_quantity: parseFloat(bidQuantity),
-          status: 'pending'
-        })
-        .select(); // Add .select() to return the inserted data
-
-      console.log('Supabase response:', { data, error });
-      
-      if (error) throw error;
-
-      // Check if data exists and has the expected structure
-      if (!data || !Array.isArray(data) || data.length === 0) {
-        throw new Error('Failed to create bid - no data returned');
-      }
-
-      // Check if this bid replaces any existing bids
-      const newBid = {
-        id: data[0].id,
-        produce_id: selectedProduct.id,
-        bid_amount: parseFloat(bidAmount),
-        bid_quantity: parseFloat(bidQuantity)
-      };
-
-      // Get all pending bids for the same produce
-      const { data: existingBids, error: fetchError } = await supabase
-        .from('distributor_bids')
-        .select('*')
-        .eq('produce_id', selectedProduct.id)
-        .eq('status', 'pending');
-
-      if (fetchError) {
-        console.warn('Could not fetch existing bids for replacement:', fetchError);
-        setMessage('Bid placed successfully! (Could not check for bid replacement)');
-      } else if (existingBids && Array.isArray(existingBids)) {
-        // Calculate bid score (price * quantity for better comparison)
-        const newBidScore = parseFloat(bidAmount) * parseFloat(bidQuantity);
-        
-        // Find bids that should be replaced (lower score)
-        const bidsToReplace = existingBids.filter(bid => {
-          const bidScore = parseFloat(bid.bid_amount) * parseFloat(bid.bid_quantity);
-          return bidScore < newBidScore && bid.id !== newBid.id;
-        });
-
-        // Update lower bids to replaced status
-        if (bidsToReplace.length > 0) {
-          try {
-            const bidIds = bidsToReplace.map(bid => bid.id);
-            const { error: updateError } = await supabase
-              .from('distributor_bids')
-              .update({ status: 'replaced' })
-              .in('id', bidIds);
-
-            if (updateError) {
-              console.warn('Could not update lower bids:', updateError);
-              setMessage(`Bid placed successfully! (Could not replace ${bidsToReplace.length} lower bid(s))`);
-            } else {
-              setMessage(`Bid placed successfully! ${bidsToReplace.length} lower bid(s) were automatically replaced.`);
-            }
-          } catch (updateError) {
-            console.warn('Error updating lower bids:', updateError);
-            setMessage(`Bid placed successfully! (Could not replace lower bids)`);
-          }
-        } else {
-          setMessage('Bid placed successfully!');
-        }
-      } else {
-        setMessage('Bid placed successfully!');
-      }
-
-      setMessageType('success');
-      setShowBidModal(false);
-      setSelectedProduct(null);
-      setBidAmount('');
-      setBidQuantity('');
-      
-    } catch (error) {
-      console.error('Error placing bid:', error);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to place bid. Please try again.';
-      
-      if (error.message) {
-        if (error.message.includes('Failed to create bid')) {
-          errorMessage = 'Failed to create bid. Please check your connection and try again.';
-        } else if (error.message.includes('permission denied')) {
-          errorMessage = 'Permission denied. Please contact support.';
-        } else if (error.message.includes('foreign key')) {
-          errorMessage = 'Invalid product reference. Please refresh and try again.';
-        }
-      }
-      
-      setMessage(errorMessage);
-      setMessageType('error');
-    } finally {
-      setBidding(false);
+          console.log('Bid validation passed, fetching farmer payment config...');
+    
+    // Check if farmer has configured payment settings
+    const razorpayKey = await fetchFarmerPaymentConfig(selectedProduct.id);
+          console.log('Razorpay key result:', razorpayKey);
+    
+    if (!razorpayKey) {
+      console.log('No razorpay key found, returning early');
+      return;
     }
+    
+          console.log('Razorpay key found, proceeding with payment modal...');
+    
+    // Store bid data and show payment modal
+    setPendingBidData({
+      distributor_id: user?.id,
+      produce_id: selectedProduct.id,
+     bid_amount: parseFloat(bidAmount),
+      bid_quantity: parseFloat(bidQuantity),
+      status: 'pending'
+    });
+    
+    setShowPaymentModal(true);
+    setShowBidModal(false);
   };
 
   return (
@@ -1124,6 +1255,69 @@ const MatchesView = ({ likedItems, userRole, onBack, onReset, user, onRemoveItem
                   </>
                 ) : (
                   'Place Bid'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && pendingBidData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Complete Your Bid</h3>
+              <p className="text-gray-600">Provide card details to secure your bid</p>
+            </div>
+            
+            {/* Bid Summary */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <div className="text-sm text-gray-600 space-y-2">
+                <p><strong>Produce:</strong> {selectedProduct?.name}</p>
+                                 <p><strong>Bid Amount:</strong> ₹{pendingBidData.bid_amount}/kg</p>
+                 <p><strong>Quantity:</strong> {pendingBidData.bid_quantity}kg</p>
+                 <p><strong>Total Value:</strong> ₹{(pendingBidData.bid_amount * pendingBidData.bid_quantity).toFixed(2)}</p>
+              </div>
+            </div>
+            
+            {/* Important Note */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="flex items-start space-x-2">
+                <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                  <span className="text-white text-xs font-bold">i</span>
+                </div>
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium">Your card will only be charged if you win the auction!</p>
+                  <p>This is just to verify your payment method and secure your bid.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={openRazorpayPayment}
+                disabled={paymentProcessing}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center"
+              >
+                {paymentProcessing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                    Processing...
+                  </>
+                ) : (
+                  'Proceed to Payment'
                 )}
               </button>
             </div>
