@@ -175,7 +175,7 @@ const Auth = () => {
             
             <div>
               <h1 className="text-2xl font-bold text-[#212121] mb-2">
-                {isSignUp ? 'Join FarmSwipe' : 'Welcome Back'}
+                {isSignUp ? 'Join HarvestLink' : 'Welcome Back'}
               </h1>
               <p className="text-[#212121]/70 text-sm leading-relaxed">
                 {isSignUp 

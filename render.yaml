@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: codefury-flask-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python prices.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.18
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: false
+

@@ -1,4 +1,4 @@
-# 🌾 FarmSwipe - Agriculture Marketplace Platform
+# 🌾 HarvestLink - Agriculture Marketplace Platform
 
 A comprehensive digital marketplace platform that connects farmers, distributors, and equipment sellers through an innovative bidding system, AI-powered price suggestions, and secure payment processing.
 
@@ -127,6 +127,8 @@ export FLASK_ENV="development"
 python prices.py
 ```
 
+**Note**: The backend is now deployed on Render and accessible at: `https://flask-microservice-czu7.onrender.com`
+
 ### Database Setup
 1. Create a Supabase project
 2. Run the SQL scripts in `database_setup_corrected.sql`
@@ -148,9 +150,12 @@ RAZORPAY_KEY_SECRET=your_razorpay_secret
 ### Price Suggestion API
 - `GET /api/price-suggestion?crop={crop}&location={location}`
 - `POST /api/price-suggestion` with JSON body
+- `POST /api/ai-price-suggestion` - Frontend-specific AI price suggestions
 - `GET /health` - Health check
 - `GET /test` - API test endpoint
 - `GET /test-gemini` - Gemini AI test
+
+**Base URL**: `https://flask-microservice-czu7.onrender.com`
 
 ### Supabase Edge Functions
 - `/process-bid` - Process equipment bids
@@ -197,10 +202,13 @@ start-flask-backend.bat
 start-gemini-backend.bat
 
 # Or deploy to cloud platforms like:
+# - Render (Currently deployed)
 # - Heroku
 # - AWS Lambda
 # - Google Cloud Functions
 ```
+
+**Current Deployment**: The backend is deployed on Render at `https://flask-microservice-czu7.onrender.com`
 
 ### Supabase Functions
 ```bash
@@ -234,10 +242,15 @@ npm run preview       # Preview production build
 
 ### Backend Testing
 ```bash
-# Test endpoints
+# Test local endpoints
 curl http://localhost:5000/health
 curl http://localhost:5000/test
 curl http://localhost:5000/test-gemini
+
+# Test deployed endpoints
+curl https://flask-microservice-czu7.onrender.com/health
+curl https://flask-microservice-czu7.onrender.com/test
+curl https://flask-microservice-czu7.onrender.com/api/ai-price-suggestion -X POST -H "Content-Type: application/json" -d '{"crop":"tomatoes","location":"mumbai"}'
 ```
 
 ## 🤝 Contributing
@@ -259,6 +272,21 @@ For support and questions:
 - Review the SQL setup scripts
 - Examine the API endpoints
 - Check the Supabase dashboard for database issues
+
+## 🆕 Recent Updates
+
+### Backend Deployment (August 2025)
+- ✅ **Backend successfully deployed on Render**
+- ✅ **Frontend updated to use deployed backend**
+- ✅ **AI price suggestions now working in production**
+- ✅ **CORS configured for production deployment**
+
+### Key Changes Made
+- Moved backend files to root directory for Render deployment
+- Created `render.yaml` for declarative service configuration
+- Added `.renderignore` to exclude frontend files from backend deployment
+- Updated frontend to use `https://flask-microservice-czu7.onrender.com`
+- Simplified backend configuration for production deployment
 
 ## 🔮 Future Enhancements
 

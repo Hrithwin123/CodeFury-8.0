@@ -1,0 +1,27 @@
+# Frontend files
+src/
+public/
+node_modules/
+package.json
+package-lock.json
+vite.config.js
+eslint.config.js
+index.html
+
+# Supabase functions (not needed for backend)
+supabase/
+
+# SQL files
+*.sql
+
+# Documentation
+README.md
+DEPLOYMENT_GUIDE.md
+
+# Batch files
+*.bat
+
+# Git
+.git/
+.gitignore
+

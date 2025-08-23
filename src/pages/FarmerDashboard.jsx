@@ -495,7 +495,7 @@ const FarmerDashboard = () => {
       console.log('Calling Gemini AI API with:', { crop: apiCommodity, location: formData.location.trim() });
       
       // Call the new AI price suggestion endpoint
-      const response = await fetch(`https://codefury-8-0-flask-bakend.onrender.com/api/ai-price-suggestion`, {
+      const response = await fetch(`https://flask-microservice-czu7.onrender.com/api/ai-price-suggestion`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
